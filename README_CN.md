@@ -16,6 +16,26 @@
 
 ---
 
+## 一句话安装
+
+如果你在用 [OpenClaw](https://github.com/openclaw/openclaw)（或任何支持 ClawHub 的智能体），直接跟它说：
+
+> **"帮我安装 mlx-local-inference 这个 skill"**
+
+智能体会自动执行 `clawhub install mlx-local-inference`，下个会话就生效。就这么简单 — 你的 Mac 立刻获得本地 AI 能力。
+
+手动安装：
+
+```bash
+clawhub install mlx-local-inference
+```
+
+或直接克隆：
+
+```bash
+git clone https://github.com/bendusy/mlx-local-inference.git
+```
+
 ## 为什么做这个
 
 你的 M 系列 Mac 有强大的 Neural Engine 和统一内存，但大多数 AI 工作流仍然把每个请求发到云端 — 慢、贵、还有隐私顾虑。
@@ -28,7 +48,7 @@
 
 | 能力 | 做什么 | 精选模型 |
 |:-----|:-------|:---------|
-| 👂 **听** | 转录 99 种语言的语音，粤语/普通话表现尤强 | Qwen3-ASR-1.7B · Whisper-v3-turbo |
+| 👂 **听** | 转录语音 — 粤语、普通话、英语混合输入都行，共支持 99 种语言 | Qwen3-ASR-1.7B · Whisper-v3-turbo |
 | 👁️ **看** | 从照片、截图、票据、文档中提取文字 | PaddleOCR-VL-1.5 |
 | 🧠 **想** | 对话、推理、写代码、翻译、总结 | Qwen3-14B · Gemma3-12B |
 | 🗣️ **说** | 生成自然语音，支持自定义音色克隆 | Qwen3-TTS-1.7B |
@@ -49,6 +69,7 @@
                  ▼               ▼               ▼
           ┌────────────┐  ┌───────────┐  ┌────────────┐
           │  端口 8787  │  │ 端口 8788 │  │   CLI      │
+          │  常驻保活   │  │  按需加载  │  │  按需调用   │
           │            │  │           │  │            │
           │ · LLM      │  │ · ASR     │  │ · OCR      │
           │ · Whisper  │  │ · TTS     │  │            │
@@ -63,47 +84,29 @@
                     └─────────────────────────┘
 ```
 
-所有服务提供 **OpenAI 兼容 API**，任何支持 OpenAI 协议的工具、SDK、智能体都能直接调用，无需适配器。
+### 保活与按需加载
+
+不是所有模型都需要常驻内存，本方案采用混合策略：
+
+- **常驻保活（端口 8787）：** 主服务作为 launchd 守护进程常驻运行，LLM 和 Whisper 模型保持在内存中，随时响应。智能体的大部分请求都发到这里。
+- **按需加载（端口 8788）：** Qwen3-ASR 和 TTS 模型仅在调用时加载到内存，用完后可卸载释放 RAM，适合使用频率较低的模型。
+- **CLI 按需调用：** OCR 以 Python 命令行方式运行，不占守护进程资源，空闲时零内存开销。
+
+转录守护进程会智能协调：先加载 ASR 完成转录，卸载 ASR 释放内存，再加载 LLM 进行校对 — 在 16GB 机器上也能顺畅运行。
+
+手动卸载按需模型释放内存：
+
+```bash
+# 释放 ASR 模型内存
+curl -X DELETE "http://localhost:8788/models?model_name=mlx-community/Qwen3-ASR-1.7B-8bit"
+```
 
 ## 环境要求
 
 - Apple Silicon Mac（M1 / M2 / M3 / M4）
 - macOS 14+
 - Python 3.10+
-- 推荐 32GB+ 内存（16GB 可运行，但无法同时加载多模型）
-
-## 安装
-
-### 作为 OpenClaw Skill
-
-```bash
-clawhub install mlx-local-inference
-```
-
-### 直接克隆
-
-```bash
-git clone https://github.com/bendusy/mlx-local-inference.git
-cd mlx-local-inference
-pip install mlx mlx-lm mlx-audio mlx-vlm openai
-```
-
-模型在首次使用时自动下载。如需预先拉取：
-
-<details>
-<summary>预下载全部模型</summary>
-
-```bash
-huggingface-cli download Qwen/Qwen3-14B-MLX-4bit
-huggingface-cli download mlx-community/gemma-3-text-12b-it-4bit
-huggingface-cli download mlx-community/Qwen3-ASR-1.7B-8bit
-huggingface-cli download mlx-community/whisper-large-v3-turbo
-huggingface-cli download mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ
-huggingface-cli download mlx-community/PaddleOCR-VL-1.5-6bit
-huggingface-cli download mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit
-```
-
-</details>
+- 推荐 32GB+ 内存（16GB 配合保活/按需策略也能用）
 
 ## 使用示例
 
@@ -139,14 +142,16 @@ print(r.choices[0].message.content)
 ### 👂 听 — 语音识别
 
 ```bash
-# 粤语 / 普通话 → Qwen3-ASR
+# 粤语 / 普通话 / 中英混合 → Qwen3-ASR
 curl http://localhost:8788/v1/audio/transcriptions \
   -F file=@audio.wav -F model=mlx-community/Qwen3-ASR-1.7B-8bit -F language=zh
 
-# 99 种语言 → Whisper
+# 英语或其他 99 种语言 → Whisper
 curl http://localhost:8787/v1/audio/transcriptions \
   -F file=@audio.wav -F model=whisper-large-v3-turbo
 ```
+
+**多语言混合输入：** 真实对话往往不是单一语言。如果你在同一段录音里混合粤语、英语、普通话（很多人的日常），Qwen3-ASR 能原生处理。纯非中文音频则用 Whisper，覆盖 99 种语言。`language` 参数可引导识别方向，也可以省略让模型自动检测。
 
 支持格式：`wav`、`mp3`、`m4a`、`flac`、`ogg`、`webm`
 
@@ -182,8 +187,10 @@ curl http://localhost:8787/v1/embeddings \
 把音频文件丢进 `~/transcribe/`，其余的交给守护进程：
 
 1. Qwen3-ASR 转录 → `文件名_raw.md`
-2. Qwen3-14B 纠错、补标点、保留粤语用字 → `文件名_corrected.md`
+2. Qwen3-14B 纠错、补标点 → `文件名_corrected.md`
 3. 归档至 `~/transcribe/done/`
+
+校对 LLM 会自适应源语言 — 粤语内容保留粤语用字（嘅/唔/咁/喺），普通话内容用标准中文，混合语言也能自然处理。你可以在守护进程脚本中自定义校对 prompt 来匹配你的语言偏好。
 
 不用敲命令，丢文件就行。
 
@@ -195,20 +202,51 @@ curl http://localhost:8787/v1/embeddings \
 |:-----|:-----|:-----------|
 | LLM（中文） | Qwen3-14B 4bit | 同尺寸最强中英双语，内置思维链 |
 | LLM（英文） | Gemma3-12B 4bit | 响应快、代码生成强、内存占用低 |
-| ASR（中文） | Qwen3-ASR-1.7B 8bit | 粤语/普通话准确率最高，按需加载 |
+| ASR（中文） | Qwen3-ASR-1.7B 8bit | 粤语/普通话/混合输入准确率最高，按需加载 |
 | ASR（多语言） | Whisper-v3-turbo | 99 种语言，常驻内存，久经考验 |
 | Embedding（快） | Qwen3-Embedding-0.6B 4bit | 低延迟，日常检索够用 |
 | Embedding（精） | Qwen3-Embedding-4B 4bit | 高精度语义匹配 |
 | OCR | PaddleOCR-VL-1.5 6bit | ~185 token/s，3.3 GB，精度速度比最优 |
 | TTS | Qwen3-TTS-1.7B 8bit | 自定义音色克隆，约 2 GB |
 
+## 升级与替换模型
+
+MLX 生态更新很快，更好的量化模型会不断出现。替换模型只需三步：
+
+1. **下载新模型：**
+   ```bash
+   huggingface-cli download mlx-community/<新模型名>
+   ```
+
+2. **更新服务配置**（`~/.mlx-server/config.yaml`）：
+   ```yaml
+   models:
+     - model: mlx-community/<新模型名>
+       model_id: qwen3-14b  # 保持 alias 不变，客户端零改动
+   ```
+
+3. **重启服务：**
+   ```bash
+   launchctl kickstart -k gui/$(id -u)/com.mlx-server
+   ```
+
+客户端和智能体继续用同样的 model ID 调用，完全无感切换。`references/` 目录记录了当前测试过的模型，新模型可以在 [mlx-community](https://huggingface.co/mlx-community) 上找到。
+
+**重大版本更新（如 Qwen4、Gemma4）** 时，我们会通过 ClawHub 发布新版本。更新方式：
+
+```bash
+clawhub update mlx-local-inference
+```
+
+或者直接跟你的智能体说：**"帮我更新 mlx-local-inference"**。
+
 ## 服务管理
 
 ```bash
-# 主服务（LLM + Whisper + Embedding）
+# 主服务（LLM + Whisper + Embedding）— 常驻保活
 launchctl kickstart -k gui/$(id -u)/com.mlx-server
 
-# ASR + TTS 服务
+# ASR + TTS 服务 — 模型按需加载
 launchctl kickstart -k gui/$(id -u)/com.mlx-audio-server
 
 # 自动转录守护进程
