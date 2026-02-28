@@ -32,14 +32,14 @@ git clone https://github.com/bendusy/mlx-local-inference.git
 
 Your M-series Mac has a powerful Neural Engine and unified memory — yet most AI workflows still send every request to the cloud. **MLX Local Inference Stack** turns your Mac into a fully self-contained AI workstation, with a memory-efficient design that works on **16 GB machines**.
 
-## Memory Profiles
+## Memory Strategy
 
-| Profile | RAM Usage | What's Always Loaded |
-|:--------|:----------|:---------------------|
-| **16 GB** | ~3 GB idle | Embedding (0.6B) + ASR (1.7B) |
-| **32 GB** | ~3 GB idle | Same — LLM/VLM loaded on demand |
+| Profile | Idle RAM | Always Loaded |
+|:--------|:---------|:--------------|
+| **16 GB** | ~3 GB | Embedding (0.6B) + ASR (1.7B) |
+| **32 GB** | ~3 GB | Same — LLM/VLM loaded on demand |
 
-**Key principle:** Nothing loads until you call it. Models are fetched from cache on first use, then unloaded when idle. The only always-on services are the lightweight API servers themselves.
+**Key principle:** Nothing loads until you call it. On first request, the model loads automatically (expect a few seconds delay). After an idle timeout, it unloads to free memory.
 
 ## What Your Mac Gains
 
@@ -49,14 +49,34 @@ Your M-series Mac has a powerful Neural Engine and unified memory — yet most A
 | 👂 **Hear** | Qwen3-ASR-1.7B | ~1.5 GB | **Always loaded** |
 | 🧠 **Think** | Qwen3.5-35B-A3B (32GB) / Qwen3-14B (16GB) | 20 GB / 9 GB | **On-demand** |
 | 👁️ **See** | PaddleOCR-VL-1.5 | ~3.3 GB | **On-demand** |
-| 🗣️ **Speak** | Qwen3-TTS-1.7B | ~2 GB | **On-demand (not default)** |
+| 🗣️ **Speak** | Qwen3-TTS-1.7B | ~2 GB | **On-demand (opt-in)** |
+
+## How On-Demand Loading Works
+
+The server uses a **lazy proxy** pattern:
+
+1. All models are registered at startup but **not loaded into memory**
+2. On first request, the proxy loads the model transparently — the caller just waits
+3. An **idle watchdog** monitors each model; after a configurable timeout with no requests, it unloads the model
+
+```
+Request arrives
+      │
+      ▼
+ Model loaded? ──No──▶ Load now (caller waits) ──▶ Serve request
+      │Yes                                               │
+      └──────────────────────────────────────────────────┘
+                                                         │
+                                              [idle timeout]
+                                                         │
+                                                    Unload ✓
+```
+
+No client changes needed — it's fully transparent via the OpenAI-compatible API.
 
 ## Auto-Download
 
-Missing models are detected automatically on first call. The server will:
-
-1. Check if the model exists in `~/.cache/huggingface/hub/`
-2. If missing, print a clear message and download automatically:
+Missing models are detected automatically on first call:
 
 ```
 [mlx-server] Model not found: mlx-community/Qwen3-ASR-1.7B-8bit
@@ -64,13 +84,13 @@ Missing models are detected automatically on first call. The server will:
 [mlx-server] Download complete. Loading model...
 ```
 
-You can also pre-download all default models at once:
+Pre-download all default models at once:
 
 ```bash
 python ~/.mlx-server/download_models.py
 ```
 
-Or download a specific model:
+Or a specific model:
 
 ```bash
 huggingface-cli download mlx-community/Qwen3-ASR-1.7B-8bit
@@ -93,11 +113,11 @@ huggingface-cli download mlx-community/qwen3-embedding-0.6b-4bit
           │            │  │           │  │            │
           │ · Embed ✅  │  │ · ASR ✅  │  │ · OCR      │
           │ · LLM/VLM  │  │ · TTS     │  │            │
-          │   (demand) │  │  (demand) │  │            │
+          │   (lazy)   │  │  (lazy)   │  │            │
           └────────────┘  └───────────┘  └────────────┘
 ```
 
-✅ = always loaded at startup | others = loaded on first call, unloaded when idle
+✅ = always loaded | lazy = loads on first request, unloads when idle
 
 ## Usage
 
@@ -112,7 +132,6 @@ curl http://localhost:8787/v1/embeddings \
 ### 👂 Hear — Speech Recognition (always-on)
 
 ```bash
-# Chinese / Cantonese / mixed
 curl http://localhost:8788/v1/audio/transcriptions \
   -F file=@audio.wav \
   -F model=mlx-community/Qwen3-ASR-1.7B-8bit \
@@ -121,7 +140,7 @@ curl http://localhost:8788/v1/audio/transcriptions \
 
 Supported formats: `wav`, `mp3`, `m4a`, `flac`, `ogg`, `webm`
 
-### 🧠 Think — LLM / Vision-Language (on-demand via mlx-vlm)
+### 🧠 Think — LLM / Vision-Language (on-demand)
 
 ```bash
 # Text
@@ -129,7 +148,7 @@ curl http://localhost:8787/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{"model": "qwen3.5-35b", "messages": [{"role": "user", "content": "Hello"}]}'
 
-# Vision (image + text)
+# Vision
 curl http://localhost:8787/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
@@ -144,7 +163,7 @@ curl http://localhost:8787/v1/chat/completions \
   }'
 ```
 
-> **16 GB tip:** Use `qwen3-14b` instead of `qwen3.5-35b`. The 14B model uses ~9 GB and leaves enough headroom for embedding + ASR.
+> **16 GB tip:** Use `qwen3-14b` (~9 GB) instead of `qwen3.5-35b` (~20 GB).
 
 ### 👁️ See — OCR (on-demand)
 
@@ -154,7 +173,7 @@ python -m mlx_vlm.generate \
   --image document.jpg --prompt "OCR:" --max-tokens 512 --temp 0.0
 ```
 
-### 🗣️ Speak — TTS (on-demand, not loaded by default)
+### 🗣️ Speak — TTS (on-demand, opt-in)
 
 ```bash
 curl http://localhost:8788/v1/audio/speech \
@@ -163,15 +182,31 @@ curl http://localhost:8788/v1/audio/speech \
   -o speech.wav
 ```
 
-TTS loads on first call and unloads after a configurable idle timeout (default: 5 min).
-
 ### 📝 Transcribe — Auto Pipeline
 
 Drop audio into `~/transcribe/` — the daemon handles the rest:
 
 1. Qwen3-ASR transcribes → `filename_raw.md`
 2. LLM corrects errors, adds punctuation → `filename_corrected.md`
-3. Results archived to `~/transcribe/done/`
+3. Archived to `~/transcribe/done/`
+
+## Admin API
+
+The server exposes a lightweight admin API for manual model management:
+
+```bash
+# List all models and load status
+curl http://localhost:8787/v1/admin/models
+
+# Manually unload a model
+curl -X POST http://localhost:8787/v1/admin/models/qwen3.5-35b/unload
+
+# Manually load a model
+curl -X POST http://localhost:8787/v1/admin/models/qwen3.5-35b/load
+
+# Queue stats
+curl http://localhost:8787/v1/admin/models/qwen3.5-35b/stats
+```
 
 ## Model Selection by RAM
 
@@ -185,7 +220,7 @@ Drop audio into `~/transcribe/` — the daemon handles the rest:
 | OCR (on-demand) | `PaddleOCR-VL-1.5-6bit` | ~3.3 GB |
 | TTS (opt-in) | `Qwen3-TTS-1.7B-8bit` | ~2 GB |
 
-> ⚠️ On 16 GB, avoid running LLM + OCR simultaneously. The daemon handles this automatically by unloading between phases.
+> ⚠️ On 16 GB, avoid running LLM + OCR simultaneously.
 
 ### 32 GB Mac
 
@@ -200,10 +235,10 @@ Drop audio into `~/transcribe/` — the daemon handles the rest:
 ## Service Management
 
 ```bash
-# Restart main server (embedding + on-demand LLM/VLM)
+# Restart main server
 launchctl kickstart -k gui/$(id -u)/com.mlx-server
 
-# Restart ASR server (ASR always-on + TTS on-demand)
+# Restart ASR/TTS server
 launchctl kickstart -k gui/$(id -u)/com.mlx-audio-server
 
 # Restart transcription daemon
@@ -212,17 +247,6 @@ launchctl kickstart gui/$(id -u)/com.mlx-transcribe-daemon
 # Logs
 tail -f ~/.mlx-server/logs/server.log
 tail -f ~/.mlx-server/logs/mlx-audio-server.err.log
-```
-
-## Upgrading Models
-
-```bash
-# 1. Download new model
-huggingface-cli download mlx-community/<new-model>
-
-# 2. Update config (~/.mlx-server/config.yaml)
-# 3. Restart service
-launchctl kickstart -k gui/$(id -u)/com.mlx-server
 ```
 
 ## Requirements
@@ -242,18 +266,7 @@ mlx-local-inference/
 ├── README_CN.md          # 中文
 ├── LICENSE
 └── references/           # Per-model technical docs
-    ├── asr-qwen3.md
-    ├── embedding-qwen3.md
-    ├── llm-qwen3-14b.md
-    ├── llm-qwen35-35b.md
-    ├── ocr.md
-    ├── transcribe-daemon.md
-    └── tts-qwen3.md
 ```
-
-## Contributing
-
-Issues and PRs welcome.
 
 ## License
 
