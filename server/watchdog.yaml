@@ -1,0 +1,33 @@
+# MLX Server Idle Unload Watchdog 配置
+# 对应 idle-unload-watchdog.py
+
+base_url: "http://127.0.0.1:8787"
+check_interval: 120   # 每 2 分钟检查一次
+
+models:
+  # Embedding 常驻，体积小（~1GB），随时需要
+  - model_id: "qwen3-embedding-0.6b"
+    idle_timeout: 0
+    always_loaded: true
+
+  - model_id: "qwen3-embedding-4b"
+    idle_timeout: 0
+    always_loaded: true
+
+  # LLM/VLM：闲置 10 分钟后卸载
+  - model_id: "qwen3.5-35b"
+    idle_timeout: 600
+
+  - model_id: "gemma-3-12b"
+    idle_timeout: 600
+
+  # OCR：闲置 5 分钟后卸载（按需使用）
+  - model_id: "paddleocr-vl-6bit"
+    idle_timeout: 300
+
+  - model_id: "paddleocr-vl-8bit"
+    idle_timeout: 300
+
+  # Whisper：闲置 5 分钟后卸载
+  - model_id: "whisper-large-v3-turbo"
+    idle_timeout: 300
