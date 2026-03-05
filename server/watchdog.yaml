@@ -28,6 +28,3 @@ models:
   - model_id: "paddleocr-vl-8bit"
     idle_timeout: 300
 
-  # Whisper：闲置 5 分钟后卸载
-  - model_id: "whisper-large-v3-turbo"
-    idle_timeout: 300

@@ -1,0 +1,45 @@
+server:
+  host: "0.0.0.0"
+  port: 8787
+  log_level: "INFO"
+  log_file: "/Users/ben/.mlx-server/logs/server.log"
+
+# lazy loading config (read by start_with_admin.py, ignored by mlx-server)
+lazy:
+  qwen3.5-35b:     { lazy: true,  idle_timeout: 1800 }
+  gemma-3-12b:     { lazy: true,  idle_timeout: 1800 }
+  qwen3-embedding-0.6b:   { lazy: false }
+  qwen3-embedding-4b:     { lazy: true,  idle_timeout: 3600 }
+  paddleocr-vl-8bit:      { lazy: true,  idle_timeout: 1800 }
+  paddleocr-vl-6bit:      { lazy: true,  idle_timeout: 1800 }
+
+models:
+  - model_path: "mlx-community/Qwen3.5-35B-A3B-4bit"
+    model_type: "multimodal"
+    model_id: "qwen3.5-35b"
+    max_concurrency: 2
+    prompt_cache_size: 10
+
+  - model_path: "mlx-community/gemma-3-text-12b-it-4bit"
+    model_type: "lm"
+    model_id: "gemma-3-12b"
+    max_concurrency: 2
+    prompt_cache_size: 10
+
+  - model_path: "mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ"
+    model_type: "embeddings"
+    model_id: "qwen3-embedding-0.6b"
+
+  - model_path: "mlx-community/Qwen3-Embedding-4B-4bit-DWQ"
+    model_type: "embeddings"
+    model_id: "qwen3-embedding-4b"
+
+  - model_path: "mlx-community/PaddleOCR-VL-1.5-8bit"
+    model_type: "multimodal"
+    model_id: "paddleocr-vl-8bit"
+    max_concurrency: 2
+
+  - model_path: "mlx-community/PaddleOCR-VL-1.5-6bit"
+    model_type: "multimodal"
+    model_id: "paddleocr-vl-6bit"
+    max_concurrency: 2
