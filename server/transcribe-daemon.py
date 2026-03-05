@@ -37,17 +37,29 @@ MAX_WORKERS = 1  # mlx-audio server is single-worker, serialize requests
 
 AUDIO_EXTENSIONS = {".wav", ".mp3", ".m4a", ".flac", ".ogg", ".webm"}
 
-LLM_CORRECTION_PROMPT = (
-    "你是一个专业的语音转录校对编辑。录音内容包含普通话和粤语，可能混合使用。\n"
-    "校对规则：\n"
-    "1. 修正同音字错误（如 的/得/地，在/再，他/她）\n"
-    "2. 粤语内容保留粤语用字（嘅、唔、咁、喺、冇、佢、啲、嘢），不要转换成普通话\n"
-    "3. 添加正确的标点符号和分段\n"
-    "4. 去除语气词和重复（呃、嗯、就是说、然后然后）\n"
-    "5. 修正领域专有名词\n"
-    "6. 保持原始语言，不要翻译\n"
-    "只返回校对后的文本，不要添加任何说明。"
-)
+def get_llm_correction_prompt() -> str:
+    base_prompt = (
+        "你是一个专业的语音转录校对编辑。录音内容包含普通话和粤语，可能混合使用。\n"
+        "校对规则：\n"
+        "1. 修正同音字错误（如 的/得/地，在/再，他/她）\n"
+        "2. 粤语内容保留粤语用字（嘅、唔、咁、喺、冇、佢、啲、嘢），不要转换成普通话\n"
+        "3. 添加正确的标点符号和分段\n"
+        "4. 去除语气词和重复（呃、嗯、就是说、然后然后）\n"
+        "5. 修正领域专有名词\n"
+        "6. 保持原始语言，不要翻译\n"
+        "只返回校对后的文本，不要添加任何说明。"
+    )
+    
+    dict_file = WATCH_DIR / "dict.txt"
+    if dict_file.exists():
+        try:
+            hotwords = dict_file.read_text(encoding="utf-8").strip()
+            if hotwords:
+                base_prompt += f"\n\n【特别注意：以下是用户提供的专有名词/热词核对表，请在校对时优先使用这些词汇或替换规则】\n{hotwords}\n"
+        except Exception as e:
+            log(f"Failed to read dict.txt: {e}")
+            
+    return base_prompt
 
 
 # ============================================================================
@@ -218,7 +230,7 @@ def correct_text(text: str) -> str:
             payload = {
                 "model": LLM_MODEL,
                 "messages": [
-                    {"role": "system", "content": LLM_CORRECTION_PROMPT},
+                    {"role": "system", "content": get_llm_correction_prompt()},
                     {"role": "user", "content": chunk}
                 ],
                 "temperature": 0.3,
