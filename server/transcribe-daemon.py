@@ -279,14 +279,18 @@ def corrected_md_path(audio_path: Path) -> Path:
 
 def audio_files() -> list[Path]:
     result = []
-    for entry in sorted(WATCH_DIR.iterdir()):
+    for entry in sorted(WATCH_DIR.rglob("*")):
+        if DONE_DIR in entry.parents:
+            continue
         if entry.is_file() and entry.suffix.lower() in AUDIO_EXTENSIONS:
             result.append(entry)
     return result
 
 
 def cleanup_stale_markers():
-    for marker in WATCH_DIR.glob("*.processing"):
+    for marker in WATCH_DIR.rglob("*.processing"):
+        if DONE_DIR in marker.parents:
+            continue
         log(f"Cleanup: removing stale marker {marker.name}")
         marker.unlink()
 
