@@ -47,6 +47,7 @@ def get_llm_correction_prompt() -> str:
         "4. 去除语气词和重复（呃、嗯、就是说、然后然后）\n"
         "5. 修正领域专有名词\n"
         "6. 保持原始语言，不要翻译\n"
+        "7. 【重要】对于你不确定、发音模糊、或者疑似生僻专有名词的词语，请使用【?词语】的格式标记出来（例如：【?麦克风】）。\n"
         "只返回校对后的文本，不要添加任何说明。"
     )
     
@@ -251,7 +252,22 @@ def correct_text(text: str) -> str:
             log(f"  Correction chunk {i+1}/{len(chunks)} failed: {e}")
             corrected_parts.append(chunk)
 
-    return "\n\n".join(corrected_parts)
+    corrected_full = "\n\n".join(corrected_parts)
+    
+    # Extract uncertain words marked by LLM
+    uncertain_words = set(re.findall(r'【\?(.*?)】', corrected_full))
+    if uncertain_words:
+        pending_file = WATCH_DIR / "dict_pending.txt"
+        try:
+            with open(pending_file, "a", encoding="utf-8") as f:
+                f.write(f"\n# {time.strftime('%Y-%m-%d %H:%M:%S')} 发现不确定词汇：\n")
+                for word in uncertain_words:
+                    f.write(f"{word} -> \n")
+            log(f"  Found {len(uncertain_words)} uncertain words, appended to dict_pending.txt")
+        except Exception as e:
+            log(f"  Failed to write to dict_pending.txt: {e}")
+
+    return corrected_full
 
 
 # ============================================================================
