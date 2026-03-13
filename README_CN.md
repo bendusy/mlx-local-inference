@@ -12,12 +12,35 @@ cd mlx-local-inference
 # 2. 安装 Python 库
 pip install mlx-lm mlx-whisper mlx-vlm huggingface_hub
 
-# 3. 安装 oMLX（用于 LLM/VLM）
-brew install omlx
-# 或从源码安装：https://github.com/omlx-ai/omlx
+# 3. 下载模型到 ~/models/（oMLX 兼容结构）
+python3 -c "
+from huggingface_hub import snapshot_download
+import os
 
-# 4. 下载模型到 ~/models/
-# 使用 huggingface-cli 或 Python 脚本下载
+models = [
+    'mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ',
+    'mlx-community/Qwen3-ASR-1.7B-8bit',
+    'mlx-community/PaddleOCR-VL-1.5-6bit',
+    'mlx-community/Qwen3-14B-4bit'
+]
+
+for repo_id in models:
+    model_name = repo_id.split('/')[-1]
+    local_dir = os.path.expanduser(f'~/models/{model_name}')
+    print(f'正在下载 {model_name}...')
+    snapshot_download(
+        repo_id=repo_id,
+        local_dir=local_dir,
+        local_dir_use_symlinks=False
+    )
+"
+
+# 4. 安装 oMLX（用于 LLM/VLM）
+brew install omlx
+# 或：pip install omlx
+
+# 5. 启动 oMLX 服务器
+omlx serve --model-dir ~/models --port 8000
 ```
 
 ## 为什么存在
@@ -159,10 +182,10 @@ omlx serve --help
 
 ## 注意事项
 
+- **所有模型统一存储在 `~/models/`，使用 oMLX 兼容结构**（如 `~/models/Qwen3-14B-4bit/`）
 - **oMLX 仅用于 LLM/VLM 推理**（通过 OpenAI 兼容 API）
 - **Embedding、ASR、OCR 使用 Python 库**（mlx-lm、mlx-whisper、mlx-vlm）
-- 模型存储在 `~/models/`，使用 `local_dir_use_symlinks=False` 下载以避免符号链接问题
-- 首次加载模型时会有 10-30 秒的冷启动时间
+- **面向未来：** 当 oMLX 支持 Embedding/ASR 时，可立即切换，无需重新下载模型
 
 ## 项目结构
 

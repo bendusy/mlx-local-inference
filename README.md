@@ -24,7 +24,30 @@ git clone https://github.com/bendusy/mlx-local-inference.git
 cd mlx-local-inference
 
 # Install Python libraries
-pip install mlx-lm mlx-vlm mlx-whisper
+pip install mlx-lm mlx-vlm mlx-whisper huggingface_hub
+
+# Download models to ~/models/ (oMLX-compatible structure)
+python3 -c "
+from huggingface_hub import snapshot_download
+import os
+
+models = [
+    'mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ',
+    'mlx-community/Qwen3-ASR-1.7B-8bit',
+    'mlx-community/PaddleOCR-VL-1.5-6bit',
+    'mlx-community/Qwen3-14B-4bit'
+]
+
+for repo_id in models:
+    model_name = repo_id.split('/')[-1]
+    local_dir = os.path.expanduser(f'~/models/{model_name}')
+    print(f'Downloading {model_name}...')
+    snapshot_download(
+        repo_id=repo_id,
+        local_dir=local_dir,
+        local_dir_use_symlinks=False
+    )
+"
 
 # Install oMLX (for LLM/VLM)
 brew install omlx
@@ -97,7 +120,8 @@ print(response.choices[0].message.content)
 ```python
 from mlx_lm import load
 
-model, tokenizer = load("mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ")
+# Load from ~/models/ (oMLX-compatible path)
+model, tokenizer = load("~/models/Qwen3-Embedding-0.6B-4bit-DWQ")
 inputs = tokenizer("text to embed", return_tensors="np")
 embeddings = model(**inputs).last_hidden_state.mean(axis=1)
 ```
@@ -107,9 +131,10 @@ embeddings = model(**inputs).last_hidden_state.mean(axis=1)
 ```python
 import mlx_whisper
 
+# Load from ~/models/ (oMLX-compatible path)
 result = mlx_whisper.transcribe(
     "audio.wav",
-    path_or_hf_repo="mlx-community/Qwen3-ASR-1.7B-8bit"
+    path_or_hf_repo="~/models/Qwen3-ASR-1.7B-8bit"
 )
 print(result["text"])
 ```
@@ -120,7 +145,8 @@ print(result["text"])
 from mlx_vlm import load, generate
 from mlx_vlm.utils import load_image
 
-model, processor = load("mlx-community/PaddleOCR-VL-1.5-6bit")
+# Load from ~/models/ (oMLX-compatible path)
+model, processor = load("~/models/PaddleOCR-VL-1.5-6bit")
 image = load_image("document.jpg")
 
 output = generate(model, processor, image, "OCR:", max_tokens=512, temp=0.0)
@@ -142,9 +168,10 @@ tail -f /tmp/omlx-server.log
 
 ## Notes
 
-- oMLX is used **only** for LLM/VLM (chat/completions).
-- Embedding/ASR/OCR are handled by Python libraries because oMLX does not support Qwen3-Embedding or Qwen3-ASR.
-- Models can still be stored in `~/models/` for consistency, but Python libs can load directly from HuggingFace.
+- **All models stored in `~/models/` using oMLX-compatible structure** (e.g., `~/models/Qwen3-14B-4bit/`)
+- oMLX is used **only** for LLM/VLM (chat/completions)
+- Embedding/ASR/OCR are handled by Python libraries (mlx-lm, mlx-whisper, mlx-vlm)
+- **Future-proof:** When oMLX adds support for Embedding/ASR, we can switch instantly without re-downloading models
 
 
 ## Project Structure

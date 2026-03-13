@@ -80,7 +80,8 @@ resp = client.chat.completions.create(
 ```python
 from mlx_lm import load, generate
 
-model, tokenizer = load("mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ")
+# Load from ~/models/ (oMLX-compatible path)
+model, tokenizer = load("~/models/Qwen3-Embedding-0.6B-4bit-DWQ")
 
 # Get embeddings
 text = "text to embed"
@@ -96,10 +97,10 @@ print(embeddings.shape)  # (1, 1024)
 ```python
 import mlx_whisper
 
-# Transcribe audio
+# Transcribe audio (load from ~/models/)
 result = mlx_whisper.transcribe(
     "audio.wav",
-    path_or_hf_repo="mlx-community/Qwen3-ASR-1.7B-8bit",
+    path_or_hf_repo="~/models/Qwen3-ASR-1.7B-8bit",
     language="zh"  # or "en", omit for auto-detect
 )
 print(result["text"])
@@ -116,7 +117,8 @@ from mlx_vlm import load, generate
 from mlx_vlm.prompt_utils import apply_chat_template
 from mlx_vlm.utils import load_image
 
-model, processor = load("mlx-community/PaddleOCR-VL-1.5-6bit")
+# Load from ~/models/ (oMLX-compatible path)
+model, processor = load("~/models/PaddleOCR-VL-1.5-6bit")
 image = load_image("document.jpg")
 
 prompt = apply_chat_template(
@@ -175,12 +177,59 @@ git clone https://github.com/bendusy/mlx-local-inference
 cd mlx-local-inference
 
 # Install dependencies
-pip install mlx-lm mlx-vlm mlx-whisper
+pip install mlx-lm mlx-vlm mlx-whisper huggingface_hub
+
+# Download models to ~/models/ (oMLX-compatible structure)
+python3 -c "
+from huggingface_hub import snapshot_download
+import os
+
+models = [
+    'mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ',
+    'mlx-community/Qwen3-ASR-1.7B-8bit',
+    'mlx-community/PaddleOCR-VL-1.5-6bit',
+    'mlx-community/Qwen3-14B-4bit'
+]
+
+for repo_id in models:
+    model_name = repo_id.split('/')[-1]
+    local_dir = os.path.expanduser(f'~/models/{model_name}')
+    print(f'Downloading {model_name}...')
+    snapshot_download(
+        repo_id=repo_id,
+        local_dir=local_dir,
+        local_dir_use_symlinks=False
+    )
+"
 
 # Install and start oMLX (for LLM/VLM)
 brew install omlx
 omlx serve --model-dir ~/models --port 8000
 ```
+
+## Model Storage Strategy
+
+**All models stored in `~/models/` using oMLX-compatible structure:**
+
+```
+~/models/
+├── Qwen3-Embedding-0.6B-4bit-DWQ/
+│   ├── config.json
+│   └── *.safetensors
+├── Qwen3-ASR-1.7B-8bit/
+├── PaddleOCR-VL-1.5-6bit/
+└── Qwen3-14B-4bit/
+```
+
+**Why this structure:**
+- oMLX requires models in `~/models/<ModelName>/` format
+- Python libraries can load from local paths (`~/models/...`)
+- **Future-proof:** When oMLX adds Embedding/ASR support, we can switch instantly without moving models
+
+**Migration path:**
+- Currently: Python libs load from `~/models/` directly
+- Future: When oMLX supports these models, switch to oMLX API endpoints
+- No model re-download needed
 
 ## Requirements
 
