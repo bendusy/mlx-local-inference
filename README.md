@@ -49,12 +49,17 @@ for repo_id in models:
     )
 "
 
-# Install oMLX (for LLM/VLM)
+# Install oMLX (for LLM/VLM) via Homebrew
+brew tap omlx-ai/tap
 brew install omlx
-# or: pip install omlx
 
 # Start oMLX server
 omlx serve --model-dir ~/models --port 8000
+```
+
+**Note:** If you don't have Homebrew, install it first:
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 ```
 
 ## Why This Exists

@@ -162,13 +162,15 @@ omlx serve --model-dir ~/models --port 8000
 ## Installation
 
 ```bash
-# Install oMLX for LLM/VLM
+# 1. Install oMLX for LLM/VLM (via Homebrew - recommended)
+brew tap omlx-ai/tap
 brew install omlx
-# or: pip install omlx
 
-# Install Python libraries for Embedding/ASR/OCR
-pip install mlx-lm mlx-vlm mlx-whisper
+# 2. Install Python libraries for Embedding/ASR/OCR
+pip install mlx-lm mlx-vlm mlx-whisper huggingface_hub
 ```
+
+**Note:** If you don't have Homebrew, install it first: `/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"`
 
 ## Setup
 
@@ -203,6 +205,7 @@ for repo_id in models:
 "
 
 # Install and start oMLX (for LLM/VLM)
+brew tap omlx-ai/tap
 brew install omlx
 omlx serve --model-dir ~/models --port 8000
 ```

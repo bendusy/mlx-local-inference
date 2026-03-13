@@ -35,12 +35,17 @@ for repo_id in models:
     )
 "
 
-# 4. 安装 oMLX（用于 LLM/VLM）
+# 4. 安装 oMLX（用于 LLM/VLM）通过 Homebrew
+brew tap omlx-ai/tap
 brew install omlx
-# 或：pip install omlx
 
 # 5. 启动 oMLX 服务器
 omlx serve --model-dir ~/models --port 8000
+```
+
+**注意：** 如果没有安装 Homebrew，请先安装：
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 ```
 
 ## 为什么存在
