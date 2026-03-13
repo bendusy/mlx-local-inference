@@ -3,9 +3,9 @@ name: mlx-local-inference
 description: >
   Use when calling local AI on this Mac — text generation, embeddings,
   speech-to-text, OCR, or image understanding. LLM/VLM via oMLX gateway at
-  localhost:8000/v1. Embedding/ASR/OCR via Python libraries (mlx-lm, mlx-vlm).
+  localhost:8000/v1. Embedding/ASR/OCR via Python libraries (mlx-lm, mlx-vlm, mlx-audio).
   Works offline. Use instead of cloud APIs for privacy or low latency.
-metadata: { "openclaw": { "os": ["darwin"], "requires": { "anyBins": ["python3"] } } }
+metadata: { "openclaw": { "os": ["darwin"], "requires": { "anyBins": ["python3.11", "python3"] } } }
 ---
 
 # MLX Local Inference Stack
@@ -27,7 +27,7 @@ Python libraries handle Embedding/ASR/OCR directly.
 │  Python Libraries (direct call)     │
 │  - mlx-lm: Embedding                │
 │  - mlx-vlm: OCR (PaddleOCR-VL)      │
-│  - mlx-whisper: ASR (Qwen3-ASR)     │
+│  - mlx-audio: ASR (Qwen3-ASR)       │
 └─────────────────────────────────────┘
 ```
 
@@ -38,7 +38,7 @@ Python libraries handle Embedding/ASR/OCR directly.
 | 💬 LLM | oMLX API | `Qwen3-14B-4bit` | ~8 GB |
 | 👁️ VLM | oMLX API | Any mlx-vlm model | varies |
 | 📐 Embed | mlx-lm (Python) | `Qwen3-Embedding-0.6B-4bit-DWQ` | ~1 GB |
-| 🎤 ASR | mlx-whisper (Python) | `Qwen3-ASR-1.7B-8bit` | ~1.5 GB |
+| 🎤 ASR | mlx-audio (Python) | `Qwen3-ASR-1.7B-8bit` | ~1.5 GB |
 | 👁️ OCR | mlx-vlm (Python) | `PaddleOCR-VL-1.5-6bit` | ~3.3 GB |
 
 ## Usage
@@ -92,34 +92,51 @@ print(embeddings.shape)  # (1, 1024)
 
 ---
 
-### ASR — Speech-to-Text (via mlx-whisper Python library)
+### ASR — Speech-to-Text (via mlx-audio Python library)
 
-```python
-import mlx_whisper
+> **Important:** Must run with `python3.11` to avoid OpenMP threading issues (`SIGSEGV`). Also requires `KMP_DUPLICATE_LIB_OK=TRUE` environment variable in some configurations.
 
-# Transcribe audio (load from ~/models/)
-result = mlx_whisper.transcribe(
-    "audio.wav",
-    path_or_hf_repo="~/models/Qwen3-ASR-1.7B-8bit",
-    language="zh"  # or "en", omit for auto-detect
-)
-print(result["text"])
+```bash
+KMP_DUPLICATE_LIB_OK=TRUE python3.11 -m mlx_audio.stt.generate \
+  --model ~/models/Qwen3-ASR-1.7B-8bit \
+  --audio "audio.wav" \
+  --output-path /tmp/asr_result \
+  --format txt \
+  --language zh \
+  --verbose
 ```
 
-Supported formats: `wav`, `mp3`, `m4a`, `flac`, `ogg`, `webm`
+**Python usage:**
+```python
+import os
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
+from mlx_audio.stt.utils import load_model
+from mlx_audio.stt.generate import generate_transcription
+
+model = load_model(os.path.expanduser("~/models/Qwen3-ASR-1.7B-8bit"))
+transcription = generate_transcription(
+    model=model,
+    audio_path="audio.wav",
+    verbose=True
+)
+print(transcription.text)
+```
 
 ---
 
 ### OCR (via mlx-vlm Python library)
 
+> **Important:** The `generate` function parameter order must be `(model, processor, prompt, image)`.
+
 ```python
+import os
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
 from mlx_vlm import load, generate
 from mlx_vlm.prompt_utils import apply_chat_template
-from mlx_vlm.utils import load_image
 
 # Load from ~/models/ (oMLX-compatible path)
-model, processor = load("~/models/PaddleOCR-VL-1.5-6bit")
-image = load_image("document.jpg")
+model, processor = load(os.path.expanduser("~/models/PaddleOCR-VL-1.5-6bit"))
+image_path = "document.jpg"
 
 prompt = apply_chat_template(
     processor, 
@@ -131,12 +148,12 @@ prompt = apply_chat_template(
 output = generate(
     model, 
     processor, 
-    image, 
-    prompt, 
+    prompt,    # prompt comes before image
+    image_path,
     max_tokens=512,
     temp=0.0
 )
-print(output)
+print(output.text)
 ```
 
 > **Note:** For OCR, prompt must be `"OCR:"` and temperature `0.0`.
@@ -167,48 +184,10 @@ brew tap omlx-ai/tap
 brew install omlx
 
 # 2. Install Python libraries for Embedding/ASR/OCR
-pip install mlx-lm mlx-vlm mlx-whisper huggingface_hub
+python3.11 -m pip install mlx-lm mlx-vlm mlx-audio huggingface_hub
 ```
 
 **Note:** If you don't have Homebrew, install it first: `/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"`
-
-## Setup
-
-```bash
-git clone https://github.com/bendusy/mlx-local-inference
-cd mlx-local-inference
-
-# Install dependencies
-pip install mlx-lm mlx-vlm mlx-whisper huggingface_hub
-
-# Download models to ~/models/ (oMLX-compatible structure)
-python3 -c "
-from huggingface_hub import snapshot_download
-import os
-
-models = [
-    'mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ',
-    'mlx-community/Qwen3-ASR-1.7B-8bit',
-    'mlx-community/PaddleOCR-VL-1.5-6bit',
-    'mlx-community/Qwen3-14B-4bit'
-]
-
-for repo_id in models:
-    model_name = repo_id.split('/')[-1]
-    local_dir = os.path.expanduser(f'~/models/{model_name}')
-    print(f'Downloading {model_name}...')
-    snapshot_download(
-        repo_id=repo_id,
-        local_dir=local_dir,
-        local_dir_use_symlinks=False
-    )
-"
-
-# Install and start oMLX (for LLM/VLM)
-brew tap omlx-ai/tap
-brew install omlx
-omlx serve --model-dir ~/models --port 8000
-```
 
 ## Model Storage Strategy
 
@@ -229,13 +208,8 @@ omlx serve --model-dir ~/models --port 8000
 - Python libraries can load from local paths (`~/models/...`)
 - **Future-proof:** When oMLX adds Embedding/ASR support, we can switch instantly without moving models
 
-**Migration path:**
-- Currently: Python libs load from `~/models/` directly
-- Future: When oMLX supports these models, switch to oMLX API endpoints
-- No model re-download needed
-
 ## Requirements
 
 - Apple Silicon Mac (M1/M2/M3/M4)
-- macOS 13+, Python 3.10+
+- macOS 13+, Python 3.11 (Required for `mlx-audio` ASR)
 - 16 GB RAM minimum (32 GB for 35B models)
