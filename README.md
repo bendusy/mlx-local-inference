@@ -34,8 +34,7 @@ import os
 models = [
     'mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ',
     'mlx-community/Qwen3-ASR-1.7B-8bit',
-    'mlx-community/PaddleOCR-VL-1.5-6bit',
-    'mlx-community/Qwen3-14B-4bit'
+    'mlx-community/Qwen3.5-35B-A3B-4bit'
 ]
 
 for repo_id in models:
