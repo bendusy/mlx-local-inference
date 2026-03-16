@@ -70,12 +70,12 @@ Your M-series Mac has powerful unified memory — yet most AI workflows still se
 
 | Ability | Model | Quant | Memory | Strategy |
 |:---|:---|:---|:---|:---|
-| 🧠 **Think** | `Gemma-3-12B-it` | 4-bit | ~8 GB | **Always On** |
+| 🧠 **Think (Primary)** | `Qwen3.5-35B-A3B-4bit` | 4-bit | ~20 GB | **Resident/Warm** |
 | 👂 **Hear** | `Qwen3-ASR-1.7B` | 8-bit | ~2 GB | **Always On** |
-| 🧠 **Deep Think** | `Qwen3.5-35B-MoE` | 4-bit | ~20 GB | **On-demand** |
+| 🧠 **Efficiency** | `Gemma-3-12B-it` | 4-bit | ~8 GB | **On-demand** |
 | 👁️ **Read (OCR)** | `PaddleOCR-VL-1.5` | 6-bit | ~6 GB | **Idle Unload** |
 
-> **Strategy Note:** ASR and standard LLM (12B) are kept resident for instant response. Heavy models (35B) and vision models (OCR) use **Idle Unload** to free up memory after 5 minutes of inactivity, maintaining system fluidity on 32GB hardware.
+> **Strategy Note:** Qwen3.5 is the flagship model for logic and reasoning. On 32GB hardware, it occupies a significant portion of memory (~20GB), so we keep it **Warm** for complex tasks. Standard 12B models are treated as high-efficiency fallbacks.
 
 ## Architecture
 
