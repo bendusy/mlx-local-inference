@@ -65,25 +65,47 @@ omlx serve --model-dir ~/models --port 8000
 
 Your M-series Mac has powerful unified memory — yet most AI workflows still send every request to the cloud. **MLX Local Inference Stack** turns your Mac into a fully self-contained AI workstation, with a memory-efficient design that works on **16 GB machines**.
 
-## Model Selection Strategy
+## Model Selection Strategy (Unified Memory)
 
-The stack supports multiple tiers of hardware. Choose the tier that matches your Mac's unified memory:
+Choose the tier that matches your hardware. This stack prioritizes **ASR (Speech-to-Text)** to ensure seamless interaction via IM channels (Feishu, Discord).
 
-### 🚀 Tier 1: Flagship (32GB+ RAM) - *Recommended for M4*
-- **Think/Vision (Primary):** `Qwen3.5-35B-A3B-4bit` (MoE)
-- **Hear (ASR):** `Qwen3-ASR-1.7B-8bit`
-- **Why:** Leverages MoE architecture for high-speed (50 t/s) reasoning and native high-precision OCR without model switching.
+### 🟢 32GB RAM Tier
+- **Think/Vision:** `Qwen3.5-35B-A3B-4bit` (MoE)
+- **ASR (Critical):** `Qwen3-ASR-1.7B-8bit` (**Always On**)
+- **Strategy:** Uses MoE for high-speed reasoning while keeping ASR resident for instant voice-to-agent communication.
 
-### ⚡ Tier 2: Performance (16GB RAM)
-- **Think:** `Gemma-3-12B-it-4bit` or `Qwen3-14B-4bit`
-- **Hear (ASR):** `Qwen3-ASR-1.7B-8bit`
-- **Vision (OCR):** `PaddleOCR-VL-1.5-6bit` (Idle Unload enabled)
-- **Why:** Balances intelligence and memory. PaddleOCR is used as a dedicated lightweight visual engine to keep the LLM context clean.
+### 🟡 16GB RAM Tier
+- **Think:** `Gemma-3-12B-it-4bit`
+- **ASR (Critical):** `Qwen3-ASR-1.7B-8bit` (**Always On**)
+- **Strategy:** Balanced for stability. Priorities ASR residency over LLM size.
 
-### ☁️ Tier 3: Entry (8GB RAM)
-- **Think:** `Qwen3-7B-4bit` or `Llama-3.2-3B-4bit`
-- **Vision (OCR):** `PaddleOCR-VL-1.5-4bit` (On-demand)
-- **Why:** Focuses on essential tasks with extremely aggressive memory offloading.
+### ⚪ 8GB RAM Tier
+- **Think:** `Qwen3-7B-4bit`
+- **ASR:** `Qwen3-ASR-1.7B-4bit` (**On-demand**)
+
+---
+
+## 🛠️ Portable Execution (via `uv`)
+
+To ensure maximum compatibility and zero-dependency mess, all components should be run via `uv`.
+
+### 👂 Hear — Instant ASR (High Priority)
+```bash
+# Optimized for IM interaction (Feishu/Discord)
+uv run --python 3.11 --with mlx-audio python -m mlx_audio.stt.generate \
+  --model ~/models/Qwen3-ASR-1.7B-8bit \
+  --audio "voice_message.ogg" \
+  --output-path /tmp/asr_result \
+  --language zh
+```
+
+### 🧠 Think — Local LLM
+```bash
+# Run via oMLX or direct uv
+uv run --with mlx-lm python -m mlx_lm.generate \
+  --model ~/models/Qwen3.5-35B-A3B-4bit \
+  --prompt "Analyze this request..."
+```
 
 ---
 
