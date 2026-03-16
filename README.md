@@ -65,14 +65,25 @@ omlx serve --model-dir ~/models --port 8000
 
 Your M-series Mac has powerful unified memory — yet most AI workflows still send every request to the cloud. **MLX Local Inference Stack** turns your Mac into a fully self-contained AI workstation, with a memory-efficient design that works on **16 GB machines**.
 
-## Recommended Models (M4 Mac 32GB)
+## Model Selection Strategy
 
-| Ability | Model | Quant | Strategy | Context | Tool Calling |
-|:---|:---|:---|:---|:---|:---|
-| 🧠 **Think (Primary)** | `Qwen3.5-35B-A3B` | 4-bit | **Resident/Warm** | **Excellent (16k+)** | **State-of-the-Art** |
-| 👂 **Hear** | `Qwen3-ASR-1.7B` | 8-bit | **Always On** | N/A | N/A |
-| 🧠 **Secondary** | `Gemma-3-12B-it` | 4-bit | **On-demand** | Good (8k) | Robust |
-| 👁️ **Read (OCR)** | `PaddleOCR-VL-1.5` | 6-bit | **Idle Unload** | N/A | N/A |
+The stack supports multiple tiers of hardware. Choose the tier that matches your Mac's unified memory:
+
+### 🚀 Tier 1: Flagship (32GB+ RAM) - *Recommended for M4*
+- **Think/Vision (Primary):** `Qwen3.5-35B-A3B-4bit` (MoE)
+- **Hear (ASR):** `Qwen3-ASR-1.7B-8bit`
+- **Why:** Leverages MoE architecture for high-speed (50 t/s) reasoning and native high-precision OCR without model switching.
+
+### ⚡ Tier 2: Performance (16GB RAM)
+- **Think:** `Gemma-3-12B-it-4bit` or `Qwen3-14B-4bit`
+- **Hear (ASR):** `Qwen3-ASR-1.7B-8bit`
+- **Vision (OCR):** `PaddleOCR-VL-1.5-6bit` (Idle Unload enabled)
+- **Why:** Balances intelligence and memory. PaddleOCR is used as a dedicated lightweight visual engine to keep the LLM context clean.
+
+### ☁️ Tier 3: Entry (8GB RAM)
+- **Think:** `Qwen3-7B-4bit` or `Llama-3.2-3B-4bit`
+- **Vision (OCR):** `PaddleOCR-VL-1.5-4bit` (On-demand)
+- **Why:** Focuses on essential tasks with extremely aggressive memory offloading.
 
 ---
 
