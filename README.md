@@ -66,14 +66,16 @@ omlx serve --model-dir ~/models --port 8000
 
 Your M-series Mac has powerful unified memory — yet most AI workflows still send every request to the cloud. **MLX Local Inference Stack** turns your Mac into a fully self-contained AI workstation, with a memory-efficient design that works on **16 GB machines**.
 
-## What Your Mac Gains
+## Recommended Models (M4 Mac 32GB)
 
-| Ability | Model (oMLX id) | Memory | Load Strategy |
-|:--------|:----------------|:-------|:--------------|
-| 📐 **Embed** | `Qwen3-Embedding-0.6B-4bit-DWQ` | ~1 GB | **On-demand** |
-| 👂 **Hear** | `Qwen3-ASR-1.7B-8bit` | ~1.5 GB | **On-demand** |
-| 🧠 **Think** | `Qwen3-14B-4bit` / `Qwen3.5-35B-A3B-4bit` | ~8–22 GB | **On-demand** |
-| 👁️ **See (OCR)** | `PaddleOCR-VL-1.5-6bit` | ~3.3 GB | **On-demand** |
+| Ability | Model | Quant | Memory | Strategy |
+|:---|:---|:---|:---|:---|
+| 🧠 **Think** | `Gemma-3-12B-it` | 4-bit | ~8 GB | **Always On** |
+| 👂 **Hear** | `Qwen3-ASR-1.7B` | 8-bit | ~2 GB | **Always On** |
+| 🧠 **Deep Think** | `Qwen3.5-35B-MoE` | 4-bit | ~20 GB | **On-demand** |
+| 👁️ **Read (OCR)** | `PaddleOCR-VL-1.5` | 6-bit | ~6 GB | **Idle Unload** |
+
+> **Strategy Note:** ASR and standard LLM (12B) are kept resident for instant response. Heavy models (35B) and vision models (OCR) use **Idle Unload** to free up memory after 5 minutes of inactivity, maintaining system fluidity on 32GB hardware.
 
 ## Architecture
 
