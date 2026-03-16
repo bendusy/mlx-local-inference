@@ -41,17 +41,34 @@ Python libraries handle Embedding/ASR/OCR directly via `uv`.
 | 🎤 ASR | mlx-audio (uv) | `Qwen3-ASR-1.7B-8bit` | ~1.5 GB |
 | 👁️ OCR | mlx-vlm (uv) | `PaddleOCR-VL-1.5-6bit` | ~3.3 GB |
 
+## Model Selection Strategy (M-Series Hardware)
+
+Choose the model tier that matches your Mac's unified memory:
+
+| Tier | Mac Memory | Think/Vision Model | Load Strategy |
+|:---|:---|:---|:---|
+| **Flagship (M4)** | **32GB+** | `Qwen3.5-35B-A3B-4bit` | **Always On** |
+| **Performance** | **16GB** | `Gemma-3-12B-it-4bit` | **On-demand** |
+| **Standard** | **8GB** | `Qwen3-7B-4bit` | **Aggressive Unload** |
+
+---
+
 ## Usage
 
 ### LLM / Vision-Language (via oMLX API)
 
 ```python
 from openai import OpenAI
+import os
+
+# Ensure system stability
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+
 client = OpenAI(base_url="http://localhost:8000/v1", api_key="local")
 
-# Text generation
+# Flagship recommendation for M4 32GB: Qwen 3.5 MoE
 resp = client.chat.completions.create(
-    model="Qwen3-14B-4bit",
+    model="qwen3.5-35b",
     messages=[{"role": "user", "content": "Hello"}]
 )
 print(resp.choices[0].message.content)
