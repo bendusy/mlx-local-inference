@@ -28,13 +28,14 @@ if __name__ == "__main__":
     def _load_lazy_flags() -> dict[str, dict]:
         with open(_CONFIG_PATH) as f:
             raw = yaml.safe_load(f)
+        
+        lazy_config = raw.get("lazy", {})
         return {
-            m["model_id"]: {
-                "lazy": m.get("lazy", False),
-                "idle_timeout": m.get("idle_timeout", 1800),
+            model_id: {
+                "lazy": cfg.get("lazy", False),
+                "idle_timeout": cfg.get("idle_timeout", 1800),
             }
-            for m in raw.get("models", [])
-            if "model_id" in m
+            for model_id, cfg in lazy_config.items()
         }
 
     def _patched_multi_lifespan(config):
