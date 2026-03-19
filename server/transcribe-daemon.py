@@ -28,7 +28,7 @@ DONE_DIR = WATCH_DIR / "done"
 POLL_INTERVAL = 15  # seconds
 
 ASR_API = "http://127.0.0.1:8788/v1"     # mlx-audio server (Qwen3-ASR)
-LLM_API = "http://127.0.0.1:8787/v1"     # mlx-openai-server (Qwen3.5-35B)
+LLM_API = "http://127.0.0.1:8787/v1"     # mlx-openai-server (Qwen3.5-9B)
 ASR_MODEL = "mlx-community/Qwen3-ASR-1.7B-8bit"
 LLM_MODEL = "qwen3.5-35b"
 
