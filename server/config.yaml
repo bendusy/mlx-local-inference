@@ -14,7 +14,7 @@ lazy:
   paddleocr-vl-6bit:      { lazy: true,  idle_timeout: 1800 }
 
 models:
-  - model_path: "mlx-community/Qwen3.5-35B-A3B-4bit"
+  - model_path: "mlx-community/Qwen3.5-9B-MLX-4bit"
     model_type: "multimodal"
     model_id: "qwen3.5-35b"
     max_concurrency: 2

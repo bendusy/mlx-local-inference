@@ -47,7 +47,7 @@ Choose the model tier that matches your Mac's unified memory:
 
 | Tier | Mac Memory | Think/Vision Model | Load Strategy |
 |:---|:---|:---|:---|
-| **Flagship (M4)** | **32GB+** | `Qwen3.5-35B-A3B-4bit` | **Always On** |
+| **Flagship (M4)** | **32GB+** | `Qwen3.5-9B-MLX-4bit` | **Always On** |
 | **Performance** | **16GB** | `Gemma-3-12B-it-4bit` | **On-demand** |
 | **Standard** | **8GB** | `Qwen3-7B-4bit` | **Aggressive Unload** |
 
@@ -66,7 +66,7 @@ os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 client = OpenAI(base_url="http://localhost:8000/v1", api_key="local")
 
-# Flagship recommendation for M4 32GB: Qwen 3.5 MoE
+# Flagship recommendation for M4 32GB: Qwen 3.5 9B 9B
 resp = client.chat.completions.create(
     model="qwen3.5-35b",
     messages=[{"role": "user", "content": "Hello"}]

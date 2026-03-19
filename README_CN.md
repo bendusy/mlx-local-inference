@@ -9,7 +9,7 @@
 根据你的 Mac 内存配置选择合适的梯队。本项目优先保障 **ASR (语音转文字)** 的实时性，以确保在飞书、Discord 等 IM 端的极致沟通体验。
 
 ### 🟢 32GB 内存梯队
-- **思考/视觉 (Think/Vision):** `Qwen3.5-35B-A3B-4bit` (MoE 架构)
+- **思考/视觉 (Think/Vision):** `Qwen3.5-9B-MLX-4bit` (MoE 架构)
 - **听觉 (ASR):** `Qwen3-ASR-1.7B-8bit` (**常驻保活**)
 - **策略:** 利用 MoE 实现极速推理 (50 t/s)，同时保持 ASR 常驻以实现即时语音沟通。
 
@@ -41,7 +41,7 @@ uv run --python 3.11 --with mlx-audio python -m mlx_audio.stt.generate \
 ### 🧠 思考 — 本地 LLM
 ```bash
 uv run --with mlx-lm python -m mlx_lm.generate \
-  --model ~/models/Qwen3.5-35B-A3B-4bit \
+  --model ~/models/Qwen3.5-9B-MLX-4bit \
   --prompt "请分析以下请求..."
 ```
 

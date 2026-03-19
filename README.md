@@ -34,7 +34,7 @@ import os
 models = [
     'mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ',
     'mlx-community/Qwen3-ASR-1.7B-8bit',
-    'mlx-community/Qwen3.5-35B-A3B-4bit'
+    'mlx-community/Qwen3.5-9B-MLX-4bit'
 ]
 
 for repo_id in models:
@@ -70,7 +70,7 @@ Your M-series Mac has powerful unified memory — yet most AI workflows still se
 Choose the tier that matches your hardware. This stack prioritizes **ASR (Speech-to-Text)** to ensure seamless interaction via IM channels (Feishu, Discord).
 
 ### 🟢 32GB RAM Tier
-- **Think/Vision:** `Qwen3.5-35B-A3B-4bit` (MoE)
+- **Think/Vision:** `Qwen3.5-9B-MLX-4bit` (MoE)
 - **ASR (Critical):** `Qwen3-ASR-1.7B-8bit` (**Always On**)
 - **Strategy:** Uses MoE for high-speed reasoning while keeping ASR resident for instant voice-to-agent communication.
 
@@ -103,7 +103,7 @@ uv run --python 3.11 --with mlx-audio python -m mlx_audio.stt.generate \
 ```bash
 # Run via oMLX or direct uv
 uv run --with mlx-lm python -m mlx_lm.generate \
-  --model ~/models/Qwen3.5-35B-A3B-4bit \
+  --model ~/models/Qwen3.5-9B-MLX-4bit \
   --prompt "Analyze this request..."
 ```
 
@@ -115,18 +115,18 @@ Based on recent stress tests, the stack follows these optimization rules:
 
 ### 1. The 8k Token Wall
 - **Observation:** Beyond **8,000 tokens**, inference speed (TPS) on M4 chips experiences significant bandwidth throttling due to KV Cache size.
-- **Optimization:** Use `--kv-bits 4` for **Qwen 3.5 MoE** to maintain ~15 TPS even at 16k context.
+- **Optimization:** Use `--kv-bits 4` for **Qwen 3.5 9B 9B** to maintain ~15 TPS even at 16k context.
 
 ### 2. MoE vs Dense Architecture
-- **Winner:** `Qwen3.5-35B-A3B` (MoE) consistently outperforms `Gemma-3-12B` (Dense) in both throughput and reasoning depth on Apple Silicon.
-- **Throughput:** Qwen 3.5 (~50 t/s) vs Gemma 3 (~15 t/s).
+- **Winner:** `Qwen3.5-9B-A3B` (MoE) consistently outperforms `Gemma-3-12B` (Dense) in both throughput and reasoning depth on Apple Silicon.
+- **Throughput:** Qwen 3.5 9B (~50 t/s) vs Gemma 3 (~15 t/s).
 
 ### 3. Tool Calling Precision
-- **Result:** Qwen 3.5 retains **100% logic consistency** in complex tool-calling scenarios, even when context is pushed to 32k limits (though speed drops to ~1 t/s).
+- **Result:** Qwen 3.5 9B retains **100% logic consistency** in complex tool-calling scenarios, even when context is pushed to 32k limits (though speed drops to ~1 t/s).
 
 ### 4. System Stability Fixes
 - **Environment:** Always set `KMP_DUPLICATE_LIB_OK=TRUE` to prevent OpenMP initialization crashes.
-- **Library Sync:** Use `mlx-lm >= 0.31.1` for native Qwen 3.5 MoE support.
+- **Library Sync:** Use `mlx-lm >= 0.31.1` for native Qwen 3.5 9B 9B support.
 
 ## Architecture
 
