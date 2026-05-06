@@ -65,8 +65,17 @@ class JobStore:
         self._conn.commit()
         self._lock = threading.Lock()
 
-    def create(self, *, audio_path: str, glossary_yaml: str) -> str:
-        jid = uuid.uuid4().hex[:12]
+    def create(self, *, audio_path: str, glossary_yaml: str, job_id: str | None = None) -> str:
+        """Insert a new job in QUEUED state.
+
+        If `job_id` is supplied, use it (caller is responsible for uniqueness).
+        Otherwise generate a fresh 12-char hex id. Returning the id matches the
+        traditional auto-generate behaviour. Callers that need to write the
+        audio to a known directory before the Worker can race them should
+        generate the id and the directory first, write the file, and only
+        then invoke create() — that way audio_path is real on first read.
+        """
+        jid = job_id or uuid.uuid4().hex[:12]
         now = time.time()
         with self._lock:
             self._conn.execute(

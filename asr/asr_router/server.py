@@ -165,7 +165,12 @@ async def submit_job(
     settings: Settings = Depends(get_settings),
     store: JobStore = Depends(get_store),
 ):
-    job_id = store.create(audio_path="<pending>", glossary_yaml=glossary)
+    # Pre-generate the job id so we can persist the audio under it BEFORE
+    # inserting the job record. Otherwise the background Worker may pop the
+    # job (status=QUEUED) and call sf.read() on the placeholder path before
+    # the upload finishes — observed on multi-MB audio uploads.
+    import uuid
+    job_id = uuid.uuid4().hex[:12]
     job_dir = settings.storage_dir / "jobs" / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
     audio_path = job_dir / "input.wav"
@@ -176,7 +181,11 @@ async def submit_job(
         samples = samples.mean(axis=1)
     sf.write(str(audio_path), samples, sr, subtype="PCM_16")
 
-    store.update(job_id, audio_path=str(audio_path))
+    store.create(
+        audio_path=str(audio_path),
+        glossary_yaml=glossary,
+        job_id=job_id,
+    )
     return {"id": job_id, "status": "queued"}
 
 
