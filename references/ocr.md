@@ -1,92 +1,52 @@
----
-name: local-ocr
-description: >
-  Local OCR (optical character recognition) on this Mac (localhost) via MLX.
-  Default model: PaddleOCR-VL-1.5-6bit (fastest, lowest memory, best accuracy).
-  Supports Chinese, English, mixed text, scene text, receipts, documents.
-  Use when the user needs to extract text from images, do OCR on photos/screenshots/scans/PDFs,
-  read text in pictures, digitize documents, or any image-to-text task that should run locally.
----
+# PaddleOCR-VL via oMLX
 
-# Local OCR
+`PaddleOCR-VL-1.5-6bit` is a vision model served by oMLX at `POST /v1/chat/completions`. It accepts images via `image_url` content blocks (base64 data URL). Auth: see `references/omlx.md`.
 
-Host IP: `localhost` | Port: `8787` | LAN accessible
+This is a general VLM — it answers free-form prompts about images. For pure OCR use prompt `"OCR this document."` or just `"OCR:"`. You can also ask `"What is the total on this receipt?"` etc.
 
-## Default Model
-
-| Item | Value |
-|------|-------|
-| Model | PaddleOCR-VL-1.5-6bit |
-| Model ID | `paddleocr-vl-6bit` |
-| HuggingFace path | `mlx-community/PaddleOCR-VL-1.5-6bit` |
-| Speed | ~185 t/s |
-| Memory | ~3.3 GB |
-| Prompt | `OCR:` |
-
-Also available: `paddleocr-vl-8bit` (same accuracy, slightly slower).
-
-## Python (mlx-vlm direct)
+## Python
 
 ```python
-from mlx_vlm import generate, load
-from mlx_vlm.prompt_utils import apply_chat_template
-from mlx_vlm.utils import load_config
+import base64, httpx
 
-model, processor = load("mlx-community/PaddleOCR-VL-1.5-6bit")
-config = load_config("mlx-community/PaddleOCR-VL-1.5-6bit")
+def ocr_image(path: str) -> str:
+    with open(path, "rb") as f:
+        b64 = base64.b64encode(f.read()).decode()
+    resp = httpx.post(
+        "http://localhost:18080/v1/chat/completions",
+        headers={"Authorization": "Bearer sk-mlx"},
+        json={
+            "model": "PaddleOCR-VL-1.5-6bit",
+            "temperature": 0.0,
+            "messages": [{
+                "role": "user",
+                "content": [
+                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
+                    {"type": "text", "text": "OCR this document."},
+                ],
+            }],
+        },
+        timeout=60.0,
+    )
+    resp.raise_for_status()
+    return resp.json()["choices"][0]["message"]["content"]
 
-prompt = apply_chat_template(processor, config, "OCR:", num_images=1)
-out = generate(model, processor, prompt, "image.jpg",
-               max_tokens=512, temperature=0.0, verbose=False)
-print(out.text if hasattr(out, "text") else out)
+print(ocr_image("scan.jpg"))
 ```
 
-## CLI
+## cURL
 
 ```bash
-cd ~/.mlx-server/venv
-python -m mlx_vlm.generate \
-  --model mlx-community/PaddleOCR-VL-1.5-6bit \
-  --image image.jpg \
-  --prompt "OCR:" \
-  --max-tokens 512 \
-  --temp 0.0
-```
-
-## Batch OCR
-
-```python
-from pathlib import Path
-from mlx_vlm import generate, load
-from mlx_vlm.prompt_utils import apply_chat_template
-from mlx_vlm.utils import load_config
-
-model, processor = load("mlx-community/PaddleOCR-VL-1.5-6bit")
-config = load_config("mlx-community/PaddleOCR-VL-1.5-6bit")
-
-for img in sorted(Path("images/").glob("*.jpg")):
-    prompt = apply_chat_template(processor, config, "OCR:", num_images=1)
-    out = generate(model, processor, prompt, str(img),
-                   max_tokens=512, temperature=0.0, verbose=False)
-    text = out.text if hasattr(out, "text") else str(out)
-    print(f"{img.name}: {text}")
+B64=$(base64 -i scan.jpg)
+curl http://localhost:18080/v1/chat/completions \
+  -H "Authorization: Bearer sk-mlx" \
+  -H "Content-Type: application/json" \
+  -d "{\"model\":\"PaddleOCR-VL-1.5-6bit\",\"temperature\":0,\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/jpeg;base64,${B64}\"}},{\"type\":\"text\",\"text\":\"OCR this document.\"}]}]}"
 ```
 
 ## Notes
 
-- Venv: `~/.mlx-server/venv` (activate or use full path to python)
-- Prompt must be exactly `OCR:` for PaddleOCR-VL models
-- `temperature=0.0` for deterministic output
-- RGBA images (alpha-only content) must be converted to RGB first:
-  ```python
-  from PIL import Image
-  img = Image.open("rgba.png").convert("RGB")
-  img.save("rgb.jpg")
-  ```
-- High-res images (>3MB) may take longer; resize if speed matters
-
-## Service Management
-
-```bash
-launchctl kickstart -k gui/$(id -u)/com.mlx-server
-```
+- `temperature=0.0` for deterministic output.
+- RGBA images must be converted to RGB before sending (PIL: `Image.open(p).convert("RGB")`).
+- Speed: ~185 t/s on M4. Memory: ~3.3 GB.
+- oMLX manages load/unload; `is_pinned` not set — model evicts under memory pressure.

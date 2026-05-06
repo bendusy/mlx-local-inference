@@ -1,68 +1,63 @@
-# omlx API Reference
+# oMLX — Authoritative Spec
 
-omlx 是 OpenAI-compatible 本地推理服务器，统一管理所有 MLX 模型。
+oMLX is a macOS-native OpenAI-compatible inference server that manages MLX models on Apple Silicon. It handles model load/unload automatically — no manual lazy-loading scripts needed. Installed as `/Applications/oMLX.app` via `brew tap jundot/omlx && brew install omlx`.
 
-## 端点
+## Configuration
 
-Base URL: `http://localhost:8000/v1`
-
-| 端点 | 功能 |
-|------|------|
-| `GET /v1/models` | 列出已注册模型 |
-| `POST /v1/chat/completions` | LLM / VLM / OCR |
-| `POST /v1/embeddings` | 文本向量化 |
-| `POST /v1/audio/transcriptions` | 语音转文字 |
-
-## 模型目录结构
-
-```
-~/models/
-├── Qwen3-Embedding-0.6B-4bit-DWQ/
-│   ├── config.json
-│   ├── tokenizer.json
-│   └── *.safetensors
-├── Qwen3-ASR-1.7B-8bit/
-├── PaddleOCR-VL-1.5-6bit/
-└── Qwen3-14B-4bit/          # 可选，按需下载
-```
-
-模型名即目录名（不含 org 前缀），omlx 自动扫描 `~/models/` 下所有含 `config.json` 的子目录。
-
-## 配置文件
-
-`~/.omlx/settings.json`:
+`~/.omlx/settings.json` is the source of truth:
 ```json
 {
-  "model_dir": "/Users/ben/models",
-  "port": 8000,
-  "host": "0.0.0.0",
-  "max_model_memory": 12,
-  "hot_cache_max_size": 2
+  "port": 18080,
+  "api_key": "sk-mlx",
+  "max_model_memory": 32,
+  "max_concurrent_requests": 8,
+  "ssd_cache": true,
+  "server_aliases": ["localhost", "127.0.0.1", "<your-mac>.local"]
 }
 ```
 
-## CLI 常用命令
+Individual model settings (default, pinned) live in `~/.omlx/model_settings.json`.
+
+## Authentication
+
+All requests require `Authorization: Bearer sk-mlx` (the default key above).
+
+## Endpoints
+
+Base URL: `http://localhost:18080/v1`
+
+| Endpoint | Function |
+|----------|----------|
+| `GET /v1/models` | List registered models |
+| `POST /v1/chat/completions` | LLM / VLM / OCR |
+| `POST /v1/embeddings` | Text embeddings |
+| `POST /v1/audio/transcriptions` | ASR (Whisper-compatible) |
+
+## Live Model Inventory
+
+| Role | Model ID |
+|------|----------|
+| LLM default | `Qwen3.5-35B-A3B-4bit` |
+| LLM fast | `Qwen3.5-9B-MLX-4bit` |
+| LLM pinned | `gemma-4-26b-a4b-it-4bit` |
+| VLM | `supergemma4-26b-abliterated-multimodal-mlx-4bit` |
+| OCR | `PaddleOCR-VL-1.5-6bit` |
+| Embeddings | `Qwen3-Embedding-0.6B-4bit-DWQ` |
+| ASR | `Qwen3-ASR-1.7B-8bit` |
+
+No TTS model is live.
+
+## Model Lifecycle
+
+oMLX loads models on first request and evicts least-recently-used models when memory pressure exceeds `max_model_memory`. `is_default: true` on `Qwen3.5-35B-A3B-4bit` means it pre-loads on startup. `is_pinned: true` on `gemma-4-26b-a4b-it-4bit` prevents eviction.
+
+## Quick Health Check
 
 ```bash
-# 启动服务
-omlx serve --model-dir ~/models --port 8000
-
-# 列出已发现模型
-curl http://localhost:8000/v1/models
-
-# 手动下载模型（真实文件，不用 symlinks）
-python3 -c "
-from huggingface_hub import snapshot_download
-snapshot_download(
-    repo_id='mlx-community/Qwen3-14B-4bit',
-    local_dir='$HOME/models/Qwen3-14B-4bit',
-    local_dir_use_symlinks=False
-)
-"
+curl http://localhost:18080/v1/models \
+  -H "Authorization: Bearer sk-mlx" | python3 -m json.tool
 ```
 
-## 注意事项
+## Server Aliases
 
-- 模型名在 API 调用时**不含** `mlx-community/` 前缀，直接用目录名
-- `local_dir_use_symlinks=False` 必须设置，否则 omlx 无法发现模型（符号链接指向 HF cache blobs，移动后会断）
-- OCR 调用时 prompt 必须是 `"OCR:"`，temperature 必须是 `0.0`
+`server_aliases` in settings.json allows other LAN devices to reach oMLX via `<your-mac>.local:18080` or the LAN IP. The ASR router (`:18081`) uses `http://localhost:18080` internally.

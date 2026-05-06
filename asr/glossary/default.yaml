@@ -1,0 +1,11 @@
+# Default glossary — placeholder examples. Override with per-job glossary
+# at request time, OR replace this file with your own real terms in a fork.
+terms:
+  - term: "Alpha Group"
+    aliases: ["Alpa Group", "Alpha"]
+  - term: "Beta Corp"
+    aliases: ["Beta Corporation", "Beta Inc."]
+  - term: "Chairman Zhang"
+    aliases: ["Mr. Zhang", "Zhang"]
+  - term: "Example City"
+    aliases: ["E.C."]

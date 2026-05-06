@@ -1,0 +1,16 @@
+meeting:
+  vad:
+    min_silence_ms: 500
+    speech_pad_ms: 200
+  diarize:
+    min_segment_sec: 1.0
+    max_speakers: 8
+  transcribe:
+    backend: sense_voice
+    chunk_max_sec: 30
+  review:
+    model: gemma-4-26b-a4b-it-4bit
+    context_window_segments: 4
+    max_segments_per_call: 12
+  summary:
+    model: gemma-4-26b-a4b-it-4bit

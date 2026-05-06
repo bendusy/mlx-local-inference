@@ -1,0 +1,12 @@
+defaults:
+  upstream: sense_voice
+
+rules:
+  - when: { request_param: { quality: high } }
+    use: omlx
+  - when: { request_param: { quality: fast } }
+    use: sense_voice
+  - when: { duration_gt: 30 }
+    use: omlx
+  - when: { event_in: ["<|BGM|>", "<|Applause|>", "<|Laughter|>"] }
+    use: omlx

@@ -1,7 +1,7 @@
 <p align="center">
-  <h1 align="center">🧠 MLX Local Inference Stack</h1>
+  <h1 align="center">MLX Local Inference Stack</h1>
   <p align="center">
-    Give your Apple Silicon Mac the power to hear, see, read, speak, think — all locally.
+    oMLX gateway + asr-router sidecar — fully local AI on Apple Silicon.
   </p>
   <p align="center">
     <a href="https://clawhub.ai/skills/mlx-local-inference"><img src="https://img.shields.io/badge/ClawHub-mlx--local--inference-FF5A36?style=flat-square" alt="ClawHub"></a>
@@ -16,232 +16,200 @@
 
 ---
 
-## Installation
-
-```bash
-# Clone repository
-git clone https://github.com/bendusy/mlx-local-inference.git
-cd mlx-local-inference
-
-# Install Python libraries
-pip install mlx-lm mlx-vlm mlx-whisper huggingface_hub
-
-# Download models to ~/models/ (oMLX-compatible structure)
-python3 -c "
-from huggingface_hub import snapshot_download
-import os
-
-models = [
-    'mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ',
-    'mlx-community/Qwen3-ASR-1.7B-8bit',
-    'mlx-community/Qwen3.5-9B-MLX-4bit'
-]
-
-for repo_id in models:
-    model_name = repo_id.split('/')[-1]
-    local_dir = os.path.expanduser(f'~/models/{model_name}')
-    print(f'Downloading {model_name}...')
-    snapshot_download(
-        repo_id=repo_id,
-        local_dir=local_dir,
-        local_dir_use_symlinks=False
-    )
-"
-
-# Install oMLX (for LLM/VLM) via Homebrew
-brew tap omlx-ai/tap
-brew install omlx
-
-# Start oMLX server
-omlx serve --model-dir ~/models --port 8000
-```
-
-**Note:** If you don't have Homebrew, install it first:
-```bash
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-```
-
-## Why This Exists
-
-Your M-series Mac has powerful unified memory — yet most AI workflows still send every request to the cloud. **MLX Local Inference Stack** turns your Mac into a fully self-contained AI workstation, with a memory-efficient design that works on **16 GB machines**.
-
-## Model Selection Strategy (Unified Memory)
-
-Choose the tier that matches your hardware. This stack prioritizes **ASR (Speech-to-Text)** to ensure seamless interaction via IM channels (Feishu, Discord).
-
-### 🟢 32GB RAM Tier
-- **Think/Vision:** `Qwen3.5-9B-MLX-4bit` (MoE)
-- **ASR (Critical):** `Qwen3-ASR-1.7B-8bit` (**Always On**)
-- **Strategy:** Uses MoE for high-speed reasoning while keeping ASR resident for instant voice-to-agent communication.
-
-### 🟡 16GB RAM Tier
-- **Think:** `Gemma-3-12B-it-4bit`
-- **ASR (Critical):** `Qwen3-ASR-1.7B-8bit` (**Always On**)
-- **Strategy:** Balanced for stability. Priorities ASR residency over LLM size.
-
-### ⚪ 8GB RAM Tier
-- **Think:** `Qwen3-7B-4bit`
-- **ASR:** `Qwen3-ASR-1.7B-4bit` (**On-demand**)
-
----
-
-## 🛠️ Portable Execution (via `uv`)
-
-To ensure maximum compatibility and zero-dependency mess, all components should be run via `uv`.
-
-### 👂 Hear — Instant ASR (High Priority)
-```bash
-# Optimized for IM interaction (Feishu/Discord)
-uv run --python 3.11 --with mlx-audio python -m mlx_audio.stt.generate \
-  --model ~/models/Qwen3-ASR-1.7B-8bit \
-  --audio "voice_message.ogg" \
-  --output-path /tmp/asr_result \
-  --language zh
-```
-
-### 🧠 Think — Local LLM
-```bash
-# Run via oMLX or direct uv
-uv run --with mlx-lm python -m mlx_lm.generate \
-  --model ~/models/Qwen3.5-9B-MLX-4bit \
-  --prompt "Analyze this request..."
-```
-
----
-
-## 📊 Performance Benchmark Results (M4 32GB)
-
-Based on recent stress tests, the stack follows these optimization rules:
-
-### 1. The 8k Token Wall
-- **Observation:** Beyond **8,000 tokens**, inference speed (TPS) on M4 chips experiences significant bandwidth throttling due to KV Cache size.
-- **Optimization:** Use `--kv-bits 4` for **Qwen 3.5 9B 9B** to maintain ~15 TPS even at 16k context.
-
-### 2. MoE vs Dense Architecture
-- **Winner:** `Qwen3.5-9B-A3B` (MoE) consistently outperforms `Gemma-3-12B` (Dense) in both throughput and reasoning depth on Apple Silicon.
-- **Throughput:** Qwen 3.5 9B (~50 t/s) vs Gemma 3 (~15 t/s).
-
-### 3. Tool Calling Precision
-- **Result:** Qwen 3.5 9B retains **100% logic consistency** in complex tool-calling scenarios, even when context is pushed to 32k limits (though speed drops to ~1 t/s).
-
-### 4. System Stability Fixes
-- **Environment:** Always set `KMP_DUPLICATE_LIB_OK=TRUE` to prevent OpenMP initialization crashes.
-- **Library Sync:** Use `mlx-lm >= 0.31.1` for native Qwen 3.5 9B 9B support.
+Two processes serve all local AI on this machine: **oMLX** (the GUI app) handles LLM/VLM/Embeddings/OCR/ASR-quality inference with continuous batching and SSD-backed model cache; **asr-router** is a FastAPI sidecar that wraps sherpa-onnx SenseVoice for sub-100 ms IM transcription and exposes an async 4-pass meeting pipeline (VAD+diarize → SenseVoice → gemma-4 contextual review → render 5 model-named artifacts). Both expose an OpenAI-compatible REST API on separate ports.
 
 ## Architecture
 
-**Hybrid approach:** oMLX for LLM/VLM (high performance), Python libraries for Embedding/ASR/OCR (simplicity).
-
 ```
-┌─────────────────────────────────────┐
-│  oMLX (localhost:8000/v1)           │
-│  - LLM (Qwen3-14B, etc.)            │
-│  - VLM (vision-language models)     │
-│  - Continuous batching + SSD cache  │
-└─────────────────────────────────────┘
-
-┌─────────────────────────────────────┐
-│  Python Libraries (direct call)     │
-│  - mlx-lm: Embedding                │
-│  - mlx-vlm: OCR (PaddleOCR-VL)      │
-│  - mlx-whisper: ASR (Qwen3-ASR)     │
-└─────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────┐
+│                  Apple Silicon (Mac M-series)                      │
+│                                                                    │
+│  ┌──────────────────────────────┐  ┌──────────────────────────────┐│
+│  │  oMLX gateway   :18080/v1    │  │  asr-router    :18081/v1     ││
+│  │  key: sk-mlx                 │  │  key: sk-mlx                 ││
+│  │                              │  │                              ││
+│  │  • Qwen3.5-35B-A3B  (LLM)    │  │  IM mode      (Whisper-API): ││
+│  │  • gemma-4-26b      (LLM)    │  │   sherpa-onnx SenseVoice     ││
+│  │  • Qwen3.5-9B       (LLM)    │  │   ↔ oMLX Qwen3-ASR (auto)    ││
+│  │  • supergemma4-26b  (VLM)    │  │                              ││
+│  │  • PaddleOCR-VL-1.5 (OCR)    │  │  Meeting mode (async jobs):  ││
+│  │  • Qwen3-Embedding-0.6B      │  │   VAD+diarize →              ││
+│  │  • Qwen3-ASR-1.7B   (ASR-Q)  │  │   SenseVoice →               ││
+│  │                              │  │   gemma-4 review (oMLX) →    ││
+│  │  continuous batching, SSD    │  │   render 5 artifacts         ││
+│  │  cache (managed by oMLX.app) │  │                              ││
+│  └──────────────────────────────┘  └──────────────────────────────┘│
+└────────────────────────────────────────────────────────────────────┘
 ```
 
-## What Your Mac Gains
+## Endpoints
 
-| Ability | Implementation | Model | Memory |
-|:--------|:--------------|:------|:-------|
-| 💬 **Think** | oMLX API | `Qwen3-14B-4bit` | ~8 GB |
-| 👁️ **See (VLM)** | oMLX API | Any mlx-vlm model | varies |
-| 📐 **Embed** | mlx-lm (Python) | `Qwen3-Embedding-0.6B-4bit-DWQ` | ~1 GB |
-| 👂 **Hear** | mlx-whisper (Python) | `Qwen3-ASR-1.7B-8bit` | ~1.5 GB |
-| 👁️ **Read (OCR)** | mlx-vlm (Python) | `PaddleOCR-VL-1.5-6bit` | ~3.3 GB |
+| Service | URL | API Key |
+|---------|-----|---------|
+| oMLX gateway | `http://localhost:18080/v1` | `sk-mlx` |
+| asr-router | `http://localhost:18081/v1` | `sk-mlx` |
 
-## Usage
+oMLX settings are managed by the GUI app; the authoritative config lives at `~/.omlx/settings.json`.
 
-### 💬 LLM — Text Generation (via oMLX API)
+## Live Model Inventory
+
+| Capability | Model ID | Size | Host |
+|-----------|----------|------|------|
+| LLM (flagship) | `Qwen3.5-35B-A3B-4bit` | ~18 GB | oMLX |
+| LLM (fast, OpenClaw default) | `gemma-4-26b-a4b-it-4bit` | ~14 GB | oMLX |
+| LLM (small) | `Qwen3.5-9B-MLX-4bit` | ~5.8 GB | oMLX |
+| VLM | `supergemma4-26b-abliterated-multimodal-mlx-4bit` | ~14 GB | oMLX |
+| OCR (VLM) | `PaddleOCR-VL-1.5-6bit` | ~3.3 GB | oMLX |
+| Embeddings | `Qwen3-Embedding-0.6B-4bit-DWQ` | ~1 GB | oMLX |
+| ASR (quality) | `Qwen3-ASR-1.7B-8bit` | ~1.5 GB | oMLX |
+| ASR (fast, local) | sherpa-onnx SenseVoice int8 | 228 MB | asr-router |
+
+SenseVoice model path: `~/models/sherpa-onnx/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/`  
+Languages: zh / en / yue / ja / ko. Decode latency: ~60–90 ms for 5–7 s clips (RTF ≈ 0.01).
+
+## Quickstart
+
+### LLM
 
 ```python
 from openai import OpenAI
-client = OpenAI(base_url="http://localhost:8000/v1", api_key="local")
-
-response = client.chat.completions.create(
-    model="Qwen3-14B-4bit",
-    messages=[{"role": "user", "content": "Hello"}]
+client = OpenAI(base_url="http://localhost:18080/v1", api_key="sk-mlx")
+resp = client.chat.completions.create(
+    model="Qwen3.5-35B-A3B-4bit",
+    messages=[{"role": "user", "content": "Hello"}],
 )
-print(response.choices[0].message.content)
+print(resp.choices[0].message.content)
 ```
 
-### 📐 Embed — Text Vectorization (via mlx-lm)
+### VLM (image understanding)
 
 ```python
-from mlx_lm import load
-
-# Load from ~/models/ (oMLX-compatible path)
-model, tokenizer = load("~/models/Qwen3-Embedding-0.6B-4bit-DWQ")
-inputs = tokenizer("text to embed", return_tensors="np")
-embeddings = model(**inputs).last_hidden_state.mean(axis=1)
-```
-
-### 👂 Hear — Speech Recognition (via mlx-whisper)
-
-```python
-import mlx_whisper
-
-# Load from ~/models/ (oMLX-compatible path)
-result = mlx_whisper.transcribe(
-    "audio.wav",
-    path_or_hf_repo="~/models/Qwen3-ASR-1.7B-8bit"
+import base64
+from openai import OpenAI
+client = OpenAI(base_url="http://localhost:18080/v1", api_key="sk-mlx")
+img_b64 = base64.b64encode(open("photo.jpg", "rb").read()).decode()
+resp = client.chat.completions.create(
+    model="supergemma4-26b-abliterated-multimodal-mlx-4bit",
+    messages=[{"role": "user", "content": [
+        {"type": "text", "text": "Describe this image."},
+        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}},
+    ]}],
 )
-print(result["text"])
+print(resp.choices[0].message.content)
 ```
 
-### 👁️ Read — OCR (via mlx-vlm)
-
-```python
-from mlx_vlm import load, generate
-from mlx_vlm.utils import load_image
-
-# Load from ~/models/ (oMLX-compatible path)
-model, processor = load("~/models/PaddleOCR-VL-1.5-6bit")
-image = load_image("document.jpg")
-
-output = generate(model, processor, image, "OCR:", max_tokens=512, temp=0.0)
-print(output)
-```
-
-## Service Management (oMLX)
+### Embeddings
 
 ```bash
-# List discovered models
-curl http://localhost:8000/v1/models
-
-# Restart service
-launchctl kickstart -k gui/$(id -u)/com.omlx-server
-
-# Logs
-tail -f /tmp/omlx-server.log
+curl -s http://localhost:18080/v1/embeddings \
+  -H "Authorization: Bearer sk-mlx" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "Qwen3-Embedding-0.6B-4bit-DWQ", "input": "Hello"}' \
+  | jq .data[0].embedding
 ```
 
-## Notes
+### OCR (PaddleOCR-VL via chat completions)
 
-- **All models stored in `~/models/` using oMLX-compatible structure** (e.g., `~/models/Qwen3-14B-4bit/`)
-- oMLX is used **only** for LLM/VLM (chat/completions)
-- Embedding/ASR/OCR are handled by Python libraries (mlx-lm, mlx-whisper, mlx-vlm)
-- **Future-proof:** When oMLX adds support for Embedding/ASR, we can switch instantly without re-downloading models
-
-
-## Project Structure
-
+```python
+import base64
+from openai import OpenAI
+client = OpenAI(base_url="http://localhost:18080/v1", api_key="sk-mlx")
+img_b64 = base64.b64encode(open("doc.jpg", "rb").read()).decode()
+resp = client.chat.completions.create(
+    model="PaddleOCR-VL-1.5-6bit",
+    messages=[{"role": "user", "content": [
+        {"type": "text", "text": "OCR this document."},
+        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}},
+    ]}],
+)
+print(resp.choices[0].message.content)
 ```
-mlx-local-inference/
-├── SKILL.md
-├── README.md
-├── README_CN.md
-├── references/
-└── ...
+
+### ASR — IM mode (asr-router auto-routes)
+
+```bash
+curl -s http://localhost:18081/v1/audio/transcriptions \
+  -H "Authorization: Bearer sk-mlx" \
+  -F "file=@voice.wav" \
+  -F "model=auto"
+# returns Whisper-compatible JSON + x_route (sense_voice|omlx) + x_tags (lang/event/emotion)
 ```
+
+Python equivalent:
+
+```python
+import httpx
+
+with open("voice.wav", "rb") as f:
+    r = httpx.post(
+        "http://localhost:18081/v1/audio/transcriptions",
+        headers={"Authorization": "Bearer sk-mlx"},
+        files={"file": ("voice.wav", f, "audio/wav")},
+        data={"model": "auto"},
+    )
+print(r.json())  # {"text": "...", "x_route": "sense_voice", "x_tags": {...}}
+```
+
+### ASR — Meeting mode (async job pipeline)
+
+```bash
+# 1. Submit
+JOB=$(curl -s http://localhost:18081/v1/audio/jobs \
+  -H "Authorization: Bearer sk-mlx" \
+  -F "file=@meeting.wav" \
+  -F 'glossary=terms:
+  - term: Alpha Group
+    aliases: [Alpa Group]' \
+  | jq -r .id)
+
+# 2. Poll
+while true; do
+  S=$(curl -s "http://localhost:18081/v1/audio/jobs/$JOB" \
+       -H "Authorization: Bearer sk-mlx" | jq -r .status)
+  echo "$S"; [ "$S" = "done" ] || [ "$S" = "failed" ] && break
+  sleep 5
+done
+
+# 3. Fetch artifacts
+curl -s "http://localhost:18081/v1/audio/jobs/$JOB/artifact/meeting_gemma4.md" \
+  -H "Authorization: Bearer sk-mlx"
+```
+
+## ASR Routing Module
+
+The `asr/` directory contains a standalone FastAPI service that runs alongside oMLX. It exposes two endpoints on port 18081: a synchronous Whisper-compatible transcription endpoint (`POST /v1/audio/transcriptions`) and an asynchronous meeting pipeline (`POST /v1/audio/jobs`).
+
+**IM mode** auto-routes between two backends. Short clips (≤ 30 s) with no ambiguous event tags go straight to sherpa-onnx SenseVoice (60–90 ms decode, RTF ~0.01). Longer audio, audio flagged with uncertain emotion/event tags, or requests with `quality=high` are forwarded to oMLX's Qwen3-ASR-1.7B-8bit for higher accuracy. The response is Whisper-compatible JSON extended with `x_route` (which backend was used) and `x_tags` (language, event, emotion from SenseVoice).
+
+**Meeting mode** runs a 4-pass pipeline asynchronously. Pass 1: VAD + speaker diarization segments the audio. Pass 2: SenseVoice transcribes each segment with language and speaker tags. Pass 3: gemma-4-26b on oMLX performs contextual review, applying the per-job glossary to correct proper nouns, domain terminology, and cross-lingual homophones. Pass 4: the reviewed transcript is rendered into 5 model-named artifacts (raw SenseVoice output, gemma-4 reviewed Markdown, speaker timeline JSON, segment SRT, summary). Artifacts are retrieved via `GET /v1/audio/jobs/{id}/artifact/{name}`.
+
+Per-job glossary is submitted as YAML in the `glossary` multipart field. The default glossary seeded from project contact data lives at `asr/glossary/default.yaml`. See [`asr/README.md`](asr/README.md) for the full API spec, routing logic, and configuration reference.
+
+**Validated performance:** gemma-4 contextual review reduces Character Error Rate from 32.08% to 22.64% — a **29.4% relative CER improvement** — on a 2-minute slice of real bilingual meeting audio with per-job glossary applied. See [`asr/EVALUATION.md`](asr/EVALUATION.md) for methodology and full results.
+
+## Hardware Requirements
+
+- Apple Silicon Mac (M1 / M2 / M3 / M4 series)
+- **16 GB unified memory** minimum for the full stack with 26 B models loaded; 32 GB recommended for concurrent LLM + VLM use
+- The 35 B MoE flagship (`Qwen3.5-35B-A3B-4bit`, ~18 GB weights) requires at least 24 GB free unified memory; oMLX manages on-demand loading and SSD-backed KV cache so models are evicted when idle
+- SenseVoice (228 MB int8) and Qwen3-Embedding (1 GB) stay resident continuously; total resident footprint with both small models is ~1.3 GB
+
+## Status
+
+| Component | State |
+|-----------|-------|
+| oMLX gateway | Running — 7 models loaded (6 in oMLX + SenseVoice in asr-router) |
+| asr-router IM mode | Implemented — SenseVoice ↔ Qwen3-ASR auto-routing |
+| asr-router meeting pipeline | Implemented — 4-pass: VAD/diarize → SenseVoice → gemma-4 review → render |
+| gemma-4 contextual review | Validated — 29.4% CER reduction on real bilingual meeting audio |
+| Per-job glossary | Working — YAML submitted at job submission time |
+
+## Acknowledgements
+
+- [oMLX](https://github.com/jundot/oMLX) — local MLX inference GUI and OpenAI-compatible gateway (`brew tap jundot/omlx`)
+- [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) — fast ONNX runtime for SenseVoice
+- [SenseVoice / FunAudioLLM](https://github.com/FunAudioLLM/SenseVoice) — multilingual ASR with emotion and event detection
+- [mlx-community on Hugging Face](https://huggingface.co/mlx-community) — quantized MLX model weights
 
 ## License
 

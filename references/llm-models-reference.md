@@ -1,48 +1,57 @@
-# LLM Model Comparison
+# LLM Model Routing Chart
 
-## Qwen3-14B (`qwen3-14b`)
+Three LLMs are currently live on oMLX (`:18080`). Auth: see `references/omlx.md`.
 
-| Item | Value |
-|------|-------|
-| Full path | `Qwen/Qwen3-14B-MLX-4bit` |
-| Parameters | 14B (4bit quantized) |
-| Max concurrency | 2 |
-| Prompt cache | 10 |
+## Models
 
-**Strengths**: Chinese/English bilingual, built-in chain-of-thought reasoning (`<think>` mode), long context, strong instruction following.
+### `Qwen3.5-35B-A3B-4bit` — Default
 
-**Best for**: Chinese tasks, deep reasoning, text correction/proofreading, translation, complex analysis.
+| | |
+|--|--|
+| `is_default` | true (pre-loads on startup) |
+| Use when | Hardest reasoning, multi-step analysis, bilingual (zh/en) tasks |
+| Tradeoff | Slow TTFT (~3-5s); highest quality |
 
-## Gemma 3 12B (`gemma-3-12b`)
+### `gemma-4-26b-a4b-it-4bit` — Pinned
 
-| Item | Value |
-|------|-------|
-| Full path | `mlx-community/gemma-3-text-12b-it-4bit` |
-| Parameters | 12B (4bit quantized) |
-| Max concurrency | 2 |
-| Prompt cache | 10 |
+| | |
+|--|--|
+| `is_pinned` | true (never evicted) |
+| Use when | Tool use, function calling, fast structured output; OpenClaw default |
+| Tradeoff | Lower reasoning ceiling than 35B; stays in VRAM — always-ready |
 
-**Strengths**: Strong English, code generation, logical reasoning, instruction-tuned.
+### `Qwen3.5-9B-MLX-4bit` — Small
 
-**Best for**: English tasks, code generation, fast responses, straightforward Q&A.
+| | |
+|--|--|
+| Use when | Dev iteration, low-memory sessions, quick drafts |
+| Tradeoff | Weakest reasoning; smallest footprint (~5 GB) |
 
-## Selection Guide
+## VLM / OCR
 
-| Scenario | Recommended |
-|----------|-------------|
-| Chinese text processing | `qwen3-14b` |
-| Cantonese content | `qwen3-14b` |
-| English writing | `gemma-3-12b` |
-| Code generation | Either (both strong) |
-| Deep multi-step reasoning | `qwen3-14b` (think mode) |
-| Quick factual Q&A | `gemma-3-12b` |
-| Translation (any direction) | `qwen3-14b` |
+- **VLM:** `supergemma4-26b-abliterated-multimodal-mlx-4bit` — image + text tasks
+- **OCR:** `PaddleOCR-VL-1.5-6bit` — see `references/ocr.md`
 
-## Also Cached (Not Loaded)
+## Quick Reference
 
-These models are downloaded but not currently served:
+```python
+from openai import OpenAI
+client = OpenAI(base_url="http://localhost:18080/v1", api_key="sk-mlx")
 
-- `mlx-community/gemma-3-12b-it-qat-4bit` — alternative Gemma 3 quantization
-- `moxin-org/MiniCPM4-SALA-9B-8bit-mlx` — MiniCPM4 9B
+# Use default (hardest tasks)
+resp = client.chat.completions.create(
+    model="Qwen3.5-35B-A3B-4bit",
+    messages=[{"role": "user", "content": "Explain quantum entanglement."}],
+)
 
-To serve them, add entries to `~/.mlx-server/config.yaml` and restart the service.
+# Use fast/pinned (tool use, structured output)
+resp = client.chat.completions.create(
+    model="gemma-4-26b-a4b-it-4bit",
+    messages=[{"role": "user", "content": "Parse this JSON: ..."}],
+)
+```
+
+## Notes
+
+- The asr-router (`:18081`) uses `gemma-4-26b-a4b-it-4bit` internally for meeting-mode contextual review.
+- Check `/v1/models` for current load state and any additional models added to `~/.omlx/model_settings.json`.
