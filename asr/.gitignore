@@ -5,3 +5,7 @@ __pycache__/
 data/
 *.egg-info/
 scripts/eval_service.log
+
+# Tests live locally only — not part of the published module.
+# Run with `cd asr && uv run pytest` if you cloned with full history.
+tests/
