@@ -183,7 +183,9 @@ curl -s "http://localhost:18081/v1/audio/jobs/$JOB/artifact/meeting_gemma4.md" \
 
 **会议模式**异步执行四阶段流水线：第一阶段 VAD + 说话人分割；第二阶段 SenseVoice 转写每段音频，附带语言和说话人标签；第三阶段 oMLX 上的 gemma-4-26b 进行上下文校对，应用按任务提交的词汇表修正专有名词、领域术语及跨语言谐音词；第四阶段将校对后的文本渲染为 5 份命名产物（SenseVoice 原始输出、gemma-4 校对 Markdown、说话人时间轴 JSON、分段 SRT 字幕、摘要）。产物通过 `GET /v1/audio/jobs/{id}/artifact/{name}` 获取。
 
-按任务词汇表以 YAML 格式通过 `glossary` multipart 字段在提交时传入。基于项目联系人数据预填的默认词汇表位于 `asr/glossary/default.yaml`。完整 API 规范、路由逻辑和配置说明请参阅 [`asr/README.md`](asr/README.md)。
+按任务词汇表以 YAML 格式通过 `glossary` multipart 字段在提交时传入。基于项目联系人数据预填的默认词汇表位于 `asr/glossary/default.yaml`。安装与运维参阅 [`asr/README.md`](asr/README.md)；其他 AI agent 调用本服务的集成规范（端点、JSON 结构、轮询模式、curl/Python/TypeScript 示例）参阅 **[`asr/AGENTS.md`](asr/AGENTS.md)**。
+
+asr-router 以 launchd agent (`com.user.asr-router`) 安装，登录时自动启动、崩溃自动重启。首次同步 `asr/` 依赖后执行 `bash asr/scripts/install_launchd.sh` 即可。服务监听 `0.0.0.0:18081`，局域网任意设备通过 `http://<your-mac>.local:18081/v1` + `sk-mlx` 即可调用。
 
 **实测效果：** gemma-4 上下文校对将字符错误率（CER）从 32.08% 降至 22.64%，在实际双语会议录音上实现 **29.4% 的相对 CER 降幅**（配合按任务词汇表）。方法论和完整结果见 [`asr/EVALUATION.md`](asr/EVALUATION.md)。
 

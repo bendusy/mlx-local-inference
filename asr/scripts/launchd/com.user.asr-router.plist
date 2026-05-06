@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.user.asr-router</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/uv</string>
+    <string>run</string>
+    <string>--python</string>
+    <string>3.11</string>
+    <string>uvicorn</string>
+    <string>asr_router.server:app</string>
+    <string>--host</string>
+    <string>0.0.0.0</string>
+    <string>--port</string>
+    <string>18081</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>__ASR_ROOT__</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>ASR_PORT</key>
+    <string>18081</string>
+    <key>ASR_API_KEY</key>
+    <string>sk-mlx</string>
+    <key>OMLX_BASE_URL</key>
+    <string>http://localhost:18080/v1</string>
+    <key>OMLX_API_KEY</key>
+    <string>sk-mlx</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+    <key>NetworkState</key>
+    <true/>
+  </dict>
+
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+
+  <key>StandardOutPath</key>
+  <string>__ASR_ROOT__/logs/asr-router.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>__ASR_ROOT__/logs/asr-router.err.log</string>
+
+  <key>ProcessType</key>
+  <string>Background</string>
+
+  <key>Nice</key>
+  <integer>0</integer>
+</dict>
+</plist>

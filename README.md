@@ -183,7 +183,9 @@ The `asr/` directory contains a standalone FastAPI service that runs alongside o
 
 **Meeting mode** runs a 4-pass pipeline asynchronously. Pass 1: VAD + speaker diarization segments the audio. Pass 2: SenseVoice transcribes each segment with language and speaker tags. Pass 3: gemma-4-26b on oMLX performs contextual review, applying the per-job glossary to correct proper nouns, domain terminology, and cross-lingual homophones. Pass 4: the reviewed transcript is rendered into 5 model-named artifacts (raw SenseVoice output, gemma-4 reviewed Markdown, speaker timeline JSON, segment SRT, summary). Artifacts are retrieved via `GET /v1/audio/jobs/{id}/artifact/{name}`.
 
-Per-job glossary is submitted as YAML in the `glossary` multipart field. The default glossary seeded from project contact data lives at `asr/glossary/default.yaml`. See [`asr/README.md`](asr/README.md) for the full API spec, routing logic, and configuration reference.
+Per-job glossary is submitted as YAML in the `glossary` multipart field. The default glossary seeded from project contact data lives at `asr/glossary/default.yaml`. See [`asr/README.md`](asr/README.md) for setup and operations, and [`asr/AGENTS.md`](asr/AGENTS.md) for the **AI agent integration spec** (endpoints, JSON shapes, polling pattern, code examples in curl / Python / TypeScript).
+
+asr-router is installed as a launchd agent (`com.user.asr-router`) so it auto-starts on login and auto-restarts on crash. After installing the asr/ deps once, run `bash asr/scripts/install_launchd.sh`. The service then listens on `0.0.0.0:18081` and is reachable from any LAN device via `http://<your-mac>.local:18081/v1` with key `sk-mlx`.
 
 **Validated performance:** gemma-4 contextual review reduces Character Error Rate from 32.08% to 22.64% — a **29.4% relative CER improvement** — on a 2-minute slice of real bilingual meeting audio with per-job glossary applied. See [`asr/EVALUATION.md`](asr/EVALUATION.md) for methodology and full results.
 
