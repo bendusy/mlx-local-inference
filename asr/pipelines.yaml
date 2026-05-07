@@ -27,11 +27,12 @@ meeting:
       max_gap_sec: 2.0
       max_merged_sec: 60.0
   review:
-    # Qwen3.5-9B is 3-4× faster per gemma-4-26b call on this hardware
-    # and is sufficient for structured JSON correction tasks. Switch to
-    # gemma-4-26b-a4b-it-4bit if the 9B is making consistent quality
-    # mistakes on a specific corpus.
-    model: Qwen3.5-9B-MLX-4bit
+    # Live test (job 44c94074b746) showed Qwen3.5-9B is faster per call
+    # but produces 18× FEWER context-aware corrections than gemma-4-26b
+    # on the same audio (12 vs 222 modified segments) — quality regression
+    # too large to accept. Stick with gemma-4-26b-a4b-it-4bit; rely on
+    # the same-speaker merge below to cut total batch count instead.
+    model: gemma-4-26b-a4b-it-4bit
     context_window_segments: 4
     # Smaller batches recover faster from a single bad gemma-4 response
     # and reduce per-call latency variance. Empirically 8 is a good balance
@@ -42,13 +43,15 @@ meeting:
     # forever on a single stuck call.
     timeout_sec: 180
     # Wave-parallel review: process N batches concurrently per wave.
-    # oMLX is configured for max_concurrent_requests=8 (see ~/.omlx/settings.json),
-    # so 4 is a safe default that leaves headroom for IM-mode traffic.
-    # Set to 1 for strictly sequential review (preserves the full sliding
-    # context window between every batch). Higher values trade some
-    # cross-batch context continuity for ~N× speedup on the review phase
-    # (the dominant cost in the meeting pipeline).
-    parallel_batches: 4
+    # Live tests showed oMLX SERIALIZES chat completions internally (single
+    # GPU stream) regardless of HTTP concurrency, so values >1 don't actually
+    # speed up review — they just queue more work AND increase memory
+    # pressure on the host (multiple in-flight prompts held in RAM, plus
+    # the asr-router's own SenseVoice/diarize models still resident).
+    # Default 1 = strictly sequential, full sliding context preserved,
+    # lowest concurrent-memory footprint. Bump only if you swap oMLX for
+    # an LLM backend that actually does batched inference (vLLM/Ollama).
+    parallel_batches: 1
   summary:
     # Summary is a one-shot call where the prompt is the full transcript;
     # 26b is worth the extra cost for higher-quality structured output.
