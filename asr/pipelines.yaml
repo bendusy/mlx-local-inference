@@ -1,10 +1,13 @@
 meeting:
   diarize:
-    # FastClustering threshold — higher value = MORE conservative merge =
-    # MORE clusters. 0.5 over-segments severely on 30+ min multilingual
-    # meetings (observed 129 clusters where ground truth had 10).
-    # Lower to 0.3 for fewer-but-coarser speaker buckets.
-    cluster_threshold: 0.3
+    # FastClustering threshold semantics (empirically verified on this stack,
+    # NOT what the original docs implied):
+    #   higher threshold → fewer clusters (more aggressive merging)
+    #   lower threshold  → more clusters (more aggressive splitting)
+    # Earlier wrong choice of 0.3 produced 235 clusters on a 36-min meeting
+    # (GT = 10 speakers); 0.5 produced 129; 0.7 should compress further.
+    # If you know the meeting size, set num_clusters > 0 instead.
+    cluster_threshold: 0.7
     # Force exact cluster count by setting num_clusters > 0; otherwise the
     # threshold path is used. If you know how many speakers the meeting
     # has, this is the most reliable knob.
