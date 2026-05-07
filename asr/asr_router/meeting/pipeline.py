@@ -9,11 +9,12 @@ import yaml
 from asr_router.config import Settings
 from asr_router.glossary import Glossary
 from asr_router.jobs import Job, JobStatus, JobStore
-from asr_router.meeting.vad_diarize import vad_diarize
+from asr_router.meeting.vad_diarize import vad_diarize, release_diarizer_cache
 from asr_router.meeting.transcribe import transcribe_segments, merge_consecutive_same_speaker
 from asr_router.meeting.review import review_segments
 from asr_router.meeting.render import render_artifacts
 from asr_router.models.omlx_client import OMLXClient
+from asr_router.models.sense_voice import SenseVoiceTranscriber
 
 
 def run_job(
@@ -44,6 +45,10 @@ def run_job(
             min_duration_on=float(diar_cfg.get("min_duration_on", 0.3)),
             min_duration_off=float(diar_cfg.get("min_duration_off", 0.5)),
         )
+        # Diarize done — release the pyannote+3D-Speaker ONNX sessions.
+        # SenseVoice is still needed for Pass 2; keep that loaded.
+        release_diarizer_cache()
+        print("[pipeline] released diarizer models after Pass 1", flush=True)
 
         # Pass 2: Transcribe per segment
         store.update(job.id, status=JobStatus.TRANSCRIBING)
@@ -63,6 +68,12 @@ def run_job(
                 f"[pipeline] same-speaker merge: {before} → {len(raw)} segments",
                 flush=True,
             )
+        # Transcribe done — release SenseVoice before kicking off gemma-4
+        # review in oMLX. This frees ~228 MB so oMLX can fully utilise
+        # GPU/memory for the LLM. Cold reload cost (~500 ms) hits the
+        # next job, not the current pipeline.
+        SenseVoiceTranscriber.release()
+        print("[pipeline] released SenseVoice after Pass 2", flush=True)
 
         # Pass 3: gemma-4 review
         store.update(job.id, status=JobStatus.REVIEWING)

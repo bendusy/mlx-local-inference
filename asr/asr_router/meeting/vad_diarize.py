@@ -23,6 +23,21 @@ class DiarizedSegment:
 _diarizer_cache: dict[tuple, "sherpa_onnx.OfflineSpeakerDiarization"] = {}
 
 
+def release_diarizer_cache() -> None:
+    """Drop all cached diarizer instances.
+
+    Call this between meeting-pipeline phases once Pass 1 (VAD + diarize)
+    is done; the pyannote-segmentation + 3D-Speaker ONNX sessions hold
+    multiple hundreds of MB and there is no benefit to keeping them
+    resident while gemma-4 in oMLX wants the GPU/memory budget. Reload
+    cost on next job is a few seconds.
+    """
+    global _diarizer_cache
+    _diarizer_cache.clear()
+    import gc
+    gc.collect()
+
+
 def _get_diarizer(
     *,
     num_clusters: int = -1,

@@ -62,6 +62,22 @@ class SenseVoiceTranscriber:
             cls._instance = cls(Settings.load().sense_voice_dir)
         return cls._instance
 
+    @classmethod
+    def release(cls) -> None:
+        """Drop the cached recognizer + onnxruntime session.
+
+        Call this between meeting-pipeline phases that don't need SenseVoice
+        anymore (e.g. before the gemma-4 review pass). The next .get() call
+        reloads the model — about 500 ms cold-start cost — which is much
+        cheaper than keeping ~228 MB resident next to a 14 GB LLM in oMLX.
+        IM-mode requests will automatically reload on demand.
+        """
+        if cls._instance is not None:
+            cls._instance._recognizer = None  # type: ignore[assignment]
+            cls._instance = None
+        import gc
+        gc.collect()
+
     def transcribe(
         self,
         wav_path: Path | str | None = None,
