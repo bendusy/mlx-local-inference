@@ -1,4 +1,5 @@
 from __future__ import annotations
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 import json
@@ -99,6 +100,52 @@ def _parse_response(text: str) -> dict:
     raise ValueError(f"Unbalanced JSON in response: {text[:200]!r}")
 
 
+def _attempt_batch(
+    omlx,
+    *,
+    model: str,
+    base_prompt: str,
+    temperature: float,
+    timeout_sec: float | None,
+    label: str,
+) -> tuple[dict | None, str | None]:
+    """Run a single batch through gemma-4 with one strict-JSON retry.
+
+    Returns (parsed_dict, passthrough_note). On success passthrough_note is
+    None. On both-attempt failure parsed_dict is None and passthrough_note
+    is a human-readable diagnostic.
+    """
+    last_err: Exception | None = None
+    for attempt in (1, 2):
+        prompt = base_prompt
+        if attempt == 2:
+            prompt = base_prompt + (
+                "\n\n再次强调：严格输出合法 JSON 对象，禁止任何额外文字、"
+                "代码栅栏、注释；所有字符串都用双引号包围；不要在 JSON 内"
+                "使用未转义的引号或换行；segments 数组长度必须等于输入数组长度。"
+            )
+        try:
+            resp = omlx.chat(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=temperature,
+                timeout=timeout_sec,
+            )
+            return _parse_response(resp), None
+        except Exception as e:  # noqa: BLE001 — covers JSONDecodeError + ValueError + httpx errors
+            last_err = e
+    note = (
+        f"reviewer JSON malformed after 2 attempts: "
+        f"{type(last_err).__name__}: {str(last_err)[:120]}"
+    )
+    print(
+        f"[review] {label}: both attempts produced malformed JSON; "
+        f"passing through raw text. err: {note}",
+        flush=True,
+    )
+    return None, note
+
+
 def review_segments(
     raw: list[SegmentTranscript],
     *,
@@ -109,97 +156,102 @@ def review_segments(
     batch: int = 12,
     temperature: float = 0.1,
     timeout_sec: float | None = 180.0,
+    parallel_batches: int = 1,
 ) -> tuple[list[ReviewedSegment], dict[str, str]]:
     """Run gemma-4 contextual review across `raw` segments.
 
-    Batches `raw` into chunks of size `batch`. Each call carries the last
-    `window` reviewed segments as context (read-only "prev_context"). Returns
-    (reviewed_segments, speaker_role_map). `text_original` is preserved for diff.
+    Strategy: split `raw` into batches of size `batch`, then process them in
+    waves of `parallel_batches` concurrent gemma-4 calls. Within a wave,
+    every batch sees the same `prev_context` (last `window` reviewed
+    segments from the previous wave). Wave size 1 = fully sequential
+    (preserves the original sliding-context behavior); larger waves trade
+    some context continuity for `~parallel_batches`× speedup, since oMLX
+    handles concurrent chat requests up to its scheduler.max_concurrent_requests.
+
+    `text_original` is preserved on each ReviewedSegment for downstream diff.
     """
     out: list[ReviewedSegment] = []
     role_map: dict[str, str] = {}
     prev_context = ""
 
-    for i in range(0, len(raw), batch):
-        batch_segs = raw[i:i + batch]
-        prompt = _render_prompt(batch_segs, glossary, prev_context)
+    if parallel_batches < 1:
+        parallel_batches = 1
 
-        # Up to 2 attempts: first normal, second with strictly-JSON suffix
-        parsed = None
-        last_err: Exception | None = None
-        for attempt in (1, 2):
-            attempt_prompt = prompt
-            if attempt == 2:
-                attempt_prompt = prompt + (
-                    "\n\n再次强调：严格输出合法 JSON 对象，禁止任何额外文字、"
-                    "代码栅栏、注释；所有字符串都用双引号包围；不要在 JSON 内"
-                    "使用未转义的引号或换行；segments 数组长度必须等于输入数组长度。"
+    all_batches = [raw[i:i + batch] for i in range(0, len(raw), batch)]
+    total_batches = len(all_batches)
+
+    for wave_start in range(0, total_batches, parallel_batches):
+        wave = all_batches[wave_start: wave_start + parallel_batches]
+        prompts = [_render_prompt(b, glossary, prev_context) for b in wave]
+        labels = [
+            f"batch {wave_start + k + 1}/{total_batches}"
+            for k in range(len(wave))
+        ]
+
+        if parallel_batches == 1 or len(wave) == 1:
+            results = [
+                _attempt_batch(
+                    omlx, model=model, base_prompt=prompts[0],
+                    temperature=temperature, timeout_sec=timeout_sec,
+                    label=labels[0],
                 )
-            try:
-                resp = omlx.chat(
-                    model=model,
-                    messages=[{"role": "user", "content": attempt_prompt}],
-                    temperature=temperature,
-                    timeout=timeout_sec,
-                )
-                parsed = _parse_response(resp)
-                break
-            except (json.JSONDecodeError, ValueError, Exception) as e:
-                last_err = e
-                if attempt == 2:
-                    # Both attempts failed — fall back to passthrough for this batch
-                    print(
-                        f"[review] batch {i // batch} of {(len(raw) + batch - 1) // batch}: "
-                        f"both attempts produced malformed JSON; passing through raw text. "
-                        f"err: {type(e).__name__}: {str(e)[:200]}",
-                        flush=True,
+            ]
+        else:
+            with ThreadPoolExecutor(max_workers=len(wave)) as ex:
+                futures = [
+                    ex.submit(
+                        _attempt_batch,
+                        omlx,
+                        model=model,
+                        base_prompt=prompts[k],
+                        temperature=temperature,
+                        timeout_sec=timeout_sec,
+                        label=labels[k],
                     )
-                    parsed = {
-                        "segments": [None] * len(batch_segs),
-                        "speaker_role_map": {},
-                        "_passthrough_reason": (
-                            f"reviewer JSON malformed after 2 attempts: "
-                            f"{type(e).__name__}: {str(e)[:120]}"
-                        ),
-                    }
+                    for k in range(len(wave))
+                ]
+                results = [f.result() for f in futures]
 
-        rev_list = parsed.get("segments", [])
-        passthrough_note = parsed.get("_passthrough_reason")
-        if len(rev_list) != len(batch_segs):
-            # Fall back to original text for any missing slots so we don't lose data
-            rev_list = list(rev_list) + [None] * (len(batch_segs) - len(rev_list))
+        for batch_segs, (parsed, passthrough_note) in zip(wave, results):
+            if parsed is None:
+                parsed = {"segments": [None] * len(batch_segs), "speaker_role_map": {}}
+            rev_list = parsed.get("segments", [])
+            if len(rev_list) != len(batch_segs):
+                rev_list = list(rev_list) + [None] * (len(batch_segs) - len(rev_list))
 
-        for orig, rev in zip(batch_segs, rev_list):
-            if rev is None:
-                fallback_note = passthrough_note or "reviewer omitted this segment; using original"
+            for orig, rev in zip(batch_segs, rev_list):
+                if rev is None:
+                    fallback_note = passthrough_note or "reviewer omitted this segment; using original"
+                    out.append(
+                        ReviewedSegment(
+                            speaker_id=orig.speaker, speaker_role=orig.speaker,
+                            start=orig.start, end=orig.end,
+                            text_corrected=orig.text, changes=[],
+                            confidence="low",
+                            notes=fallback_note,
+                            text_original=orig.text,
+                        )
+                    )
+                    continue
                 out.append(
                     ReviewedSegment(
-                        speaker_id=orig.speaker, speaker_role=orig.speaker,
-                        start=orig.start, end=orig.end,
-                        text_corrected=orig.text, changes=[],
-                        confidence="low",
-                        notes=fallback_note,
+                        speaker_id=rev.get("speaker_id", orig.speaker),
+                        speaker_role=rev.get("speaker_role", orig.speaker),
+                        start=float(rev.get("start", orig.start)),
+                        end=float(rev.get("end", orig.end)),
+                        text_corrected=rev.get("text_corrected", orig.text),
+                        changes=rev.get("changes", []) or [],
+                        confidence=rev.get("confidence", "medium"),
+                        notes=rev.get("notes", "") or "",
                         text_original=orig.text,
                     )
                 )
-                continue
-            out.append(
-                ReviewedSegment(
-                    speaker_id=rev.get("speaker_id", orig.speaker),
-                    speaker_role=rev.get("speaker_role", orig.speaker),
-                    start=float(rev.get("start", orig.start)),
-                    end=float(rev.get("end", orig.end)),
-                    text_corrected=rev.get("text_corrected", orig.text),
-                    changes=rev.get("changes", []) or [],
-                    confidence=rev.get("confidence", "medium"),
-                    notes=rev.get("notes", "") or "",
-                    text_original=orig.text,
-                )
-            )
 
-        for sid, role in (parsed.get("speaker_role_map") or {}).items():
-            role_map.setdefault(sid, role)
+            for sid, role in (parsed.get("speaker_role_map") or {}).items():
+                role_map.setdefault(sid, role)
 
+        # Context for the NEXT wave: last `window` reviewed segments from
+        # everything produced so far.
         prev_context = "\n".join(
             f"[{r.speaker_role}] {r.text_corrected}" for r in out[-window:]
         )

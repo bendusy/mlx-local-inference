@@ -27,6 +27,14 @@ meeting:
     # ~30-90s per batch; 180s gives generous headroom without hanging
     # forever on a single stuck call.
     timeout_sec: 180
+    # Wave-parallel review: process N batches concurrently per wave.
+    # oMLX is configured for max_concurrent_requests=8 (see ~/.omlx/settings.json),
+    # so 4 is a safe default that leaves headroom for IM-mode traffic.
+    # Set to 1 for strictly sequential review (preserves the full sliding
+    # context window between every batch). Higher values trade some
+    # cross-batch context continuity for ~N× speedup on the review phase
+    # (the dominant cost in the meeting pipeline).
+    parallel_batches: 4
   summary:
     model: gemma-4-26b-a4b-it-4bit
     timeout_sec: 120

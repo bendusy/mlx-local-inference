@@ -68,6 +68,7 @@ def run_job(
             window=cfg["review"]["context_window_segments"],
             batch=cfg["review"]["max_segments_per_call"],
             timeout_sec=float(cfg["review"].get("timeout_sec", 300)),
+            parallel_batches=int(cfg["review"].get("parallel_batches", 1)),
         )
 
         # Pass 4: Render
