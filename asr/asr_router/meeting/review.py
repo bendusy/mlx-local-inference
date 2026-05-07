@@ -123,28 +123,62 @@ def review_segments(
     for i in range(0, len(raw), batch):
         batch_segs = raw[i:i + batch]
         prompt = _render_prompt(batch_segs, glossary, prev_context)
-        resp = omlx.chat(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=temperature,
-            timeout=timeout_sec,
-        )
-        parsed = _parse_response(resp)
+
+        # Up to 2 attempts: first normal, second with strictly-JSON suffix
+        parsed = None
+        last_err: Exception | None = None
+        for attempt in (1, 2):
+            attempt_prompt = prompt
+            if attempt == 2:
+                attempt_prompt = prompt + (
+                    "\n\n再次强调：严格输出合法 JSON 对象，禁止任何额外文字、"
+                    "代码栅栏、注释；所有字符串都用双引号包围；不要在 JSON 内"
+                    "使用未转义的引号或换行；segments 数组长度必须等于输入数组长度。"
+                )
+            try:
+                resp = omlx.chat(
+                    model=model,
+                    messages=[{"role": "user", "content": attempt_prompt}],
+                    temperature=temperature,
+                    timeout=timeout_sec,
+                )
+                parsed = _parse_response(resp)
+                break
+            except (json.JSONDecodeError, ValueError, Exception) as e:
+                last_err = e
+                if attempt == 2:
+                    # Both attempts failed — fall back to passthrough for this batch
+                    print(
+                        f"[review] batch {i // batch} of {(len(raw) + batch - 1) // batch}: "
+                        f"both attempts produced malformed JSON; passing through raw text. "
+                        f"err: {type(e).__name__}: {str(e)[:200]}",
+                        flush=True,
+                    )
+                    parsed = {
+                        "segments": [None] * len(batch_segs),
+                        "speaker_role_map": {},
+                        "_passthrough_reason": (
+                            f"reviewer JSON malformed after 2 attempts: "
+                            f"{type(e).__name__}: {str(e)[:120]}"
+                        ),
+                    }
 
         rev_list = parsed.get("segments", [])
+        passthrough_note = parsed.get("_passthrough_reason")
         if len(rev_list) != len(batch_segs):
             # Fall back to original text for any missing slots so we don't lose data
             rev_list = list(rev_list) + [None] * (len(batch_segs) - len(rev_list))
 
         for orig, rev in zip(batch_segs, rev_list):
             if rev is None:
+                fallback_note = passthrough_note or "reviewer omitted this segment; using original"
                 out.append(
                     ReviewedSegment(
                         speaker_id=orig.speaker, speaker_role=orig.speaker,
                         start=orig.start, end=orig.end,
                         text_corrected=orig.text, changes=[],
                         confidence="low",
-                        notes="reviewer omitted this segment; using original",
+                        notes=fallback_note,
                         text_original=orig.text,
                     )
                 )
