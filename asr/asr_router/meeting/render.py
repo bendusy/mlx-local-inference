@@ -72,6 +72,7 @@ def render_artifacts(
     role_map: dict[str, str],
     omlx,
     summary_model: str,
+    summary_timeout_sec: float | None = 180.0,
 ) -> dict[str, Path]:
     """Write 5 artifacts to `out_dir`. Returns name -> path mapping.
 
@@ -125,6 +126,7 @@ def render_artifacts(
         model=summary_model,
         messages=[{"role": "user", "content": summary_prompt}],
         temperature=0.3,
+        timeout=summary_timeout_sec,
     )
     summary_md = out_dir / f"{stem}_summary.md"
     summary_md.write_text(summary_text, encoding="utf-8")

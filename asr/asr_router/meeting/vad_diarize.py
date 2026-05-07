@@ -17,13 +17,22 @@ class DiarizedSegment:
     speaker: str            # "Speaker_0", "Speaker_1", ...
 
 
-_diarizer: Optional["sherpa_onnx.OfflineSpeakerDiarization"] = None
+# Cached diarizer keyed by (num_clusters, threshold, min_on, min_off) so
+# tuning these in pipelines.yaml does not require a daemon restart for
+# fresh jobs to pick up the new params.
+_diarizer_cache: dict[tuple, "sherpa_onnx.OfflineSpeakerDiarization"] = {}
 
 
-def _get_diarizer() -> "sherpa_onnx.OfflineSpeakerDiarization":
-    global _diarizer
-    if _diarizer is not None:
-        return _diarizer
+def _get_diarizer(
+    *,
+    num_clusters: int = -1,
+    cluster_threshold: float = 0.5,
+    min_duration_on: float = 0.3,
+    min_duration_off: float = 0.5,
+) -> "sherpa_onnx.OfflineSpeakerDiarization":
+    key = (num_clusters, cluster_threshold, min_duration_on, min_duration_off)
+    if key in _diarizer_cache:
+        return _diarizer_cache[key]
     s = Settings.load()
     seg_cfg = sherpa_onnx.OfflineSpeakerSegmentationModelConfig(
         pyannote=sherpa_onnx.OfflineSpeakerSegmentationPyannoteModelConfig(
@@ -33,16 +42,19 @@ def _get_diarizer() -> "sherpa_onnx.OfflineSpeakerDiarization":
     emb_cfg = sherpa_onnx.SpeakerEmbeddingExtractorConfig(
         model=str(s.speaker_embed_path),
     )
-    cluster_cfg = sherpa_onnx.FastClusteringConfig(num_clusters=-1, threshold=0.5)
+    cluster_cfg = sherpa_onnx.FastClusteringConfig(
+        num_clusters=num_clusters, threshold=cluster_threshold
+    )
     config = sherpa_onnx.OfflineSpeakerDiarizationConfig(
         segmentation=seg_cfg,
         embedding=emb_cfg,
         clustering=cluster_cfg,
-        min_duration_on=0.3,
-        min_duration_off=0.5,
+        min_duration_on=min_duration_on,
+        min_duration_off=min_duration_off,
     )
-    _diarizer = sherpa_onnx.OfflineSpeakerDiarization(config)
-    return _diarizer
+    diar = sherpa_onnx.OfflineSpeakerDiarization(config)
+    _diarizer_cache[key] = diar
+    return diar
 
 
 def _resample_to_16k(samples: np.ndarray, sr: int) -> tuple[np.ndarray, int]:
@@ -60,18 +72,37 @@ def _resample_to_16k(samples: np.ndarray, sr: int) -> tuple[np.ndarray, int]:
     return out, target_sr
 
 
-def vad_diarize(wav_path: Path, max_speakers: int = 0) -> list[DiarizedSegment]:
+def vad_diarize(
+    wav_path: Path,
+    *,
+    num_clusters: int = -1,
+    cluster_threshold: float = 0.5,
+    min_duration_on: float = 0.3,
+    min_duration_off: float = 0.5,
+) -> list[DiarizedSegment]:
     """Run VAD + speaker diarization on the given audio file.
 
-    `max_speakers` is currently informational only — sherpa-onnx's threshold-based
-    clustering auto-detects speaker count. The argument is kept for forward
-    compatibility with hard-cap clustering modes.
+    Tunables (all reflected in pipelines.yaml meeting.diarize.*):
+    - num_clusters: -1 lets the threshold path auto-detect speaker count.
+      Set to a positive integer to force exactly N clusters (best when you
+      know the meeting size).
+    - cluster_threshold: similarity bound for FastClustering. Lower values
+      merge more aggressively (FEWER clusters); higher values split more
+      eagerly (MORE clusters). Empirical sweet spot for 30+ min mixed-language
+      meetings: 0.3.
+    - min_duration_on/off: minimum speech / silence durations passed to the
+      pyannote segmentation step.
     """
     samples, sr = sf.read(str(wav_path), dtype="float32")
     if samples.ndim > 1:
         samples = samples.mean(axis=1)
     samples, sr = _resample_to_16k(samples, sr)
-    diarizer = _get_diarizer()
+    diarizer = _get_diarizer(
+        num_clusters=num_clusters,
+        cluster_threshold=cluster_threshold,
+        min_duration_on=min_duration_on,
+        min_duration_off=min_duration_off,
+    )
     if diarizer.sample_rate != sr:
         raise RuntimeError(
             f"Resampler produced {sr} Hz but diarizer wants {diarizer.sample_rate} Hz"

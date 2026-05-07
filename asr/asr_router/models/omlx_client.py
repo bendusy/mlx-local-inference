@@ -50,8 +50,24 @@ class OMLXClient:
         r.raise_for_status()
         return r.json()
 
-    def chat(self, *, model: str, messages: list[dict], **kwargs) -> str:
-        resp = self._oa.chat.completions.create(model=model, messages=messages, **kwargs)
+    def chat(
+        self,
+        *,
+        model: str,
+        messages: list[dict],
+        timeout: float | None = 180.0,
+        **kwargs,
+    ) -> str:
+        """Call /chat/completions and return the message content string.
+
+        `timeout` is the per-request HTTP timeout in seconds; defaults to
+        180s, well above gemma-4-26b's typical 30-90s for review batches
+        but tight enough that a stuck call surfaces instead of hanging
+        the meeting pipeline. Pass `timeout=None` to use the SDK default
+        (10 minutes), or any positive float to override.
+        """
+        client = self._oa.with_options(timeout=timeout) if timeout is not None else self._oa
+        resp = client.chat.completions.create(model=model, messages=messages, **kwargs)
         return resp.choices[0].message.content or ""
 
     def close(self) -> None:

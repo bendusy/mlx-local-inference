@@ -108,6 +108,7 @@ def review_segments(
     window: int = 4,
     batch: int = 12,
     temperature: float = 0.1,
+    timeout_sec: float | None = 180.0,
 ) -> tuple[list[ReviewedSegment], dict[str, str]]:
     """Run gemma-4 contextual review across `raw` segments.
 
@@ -126,6 +127,7 @@ def review_segments(
             model=model,
             messages=[{"role": "user", "content": prompt}],
             temperature=temperature,
+            timeout=timeout_sec,
         )
         parsed = _parse_response(resp)
 

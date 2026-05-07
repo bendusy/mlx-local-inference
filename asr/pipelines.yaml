@@ -1,16 +1,32 @@
 meeting:
-  vad:
-    min_silence_ms: 500
-    speech_pad_ms: 200
   diarize:
-    min_segment_sec: 1.0
-    max_speakers: 8
+    # FastClustering threshold — higher value = MORE conservative merge =
+    # MORE clusters. 0.5 over-segments severely on 30+ min multilingual
+    # meetings (observed 129 clusters where ground truth had 10).
+    # Lower to 0.3 for fewer-but-coarser speaker buckets.
+    cluster_threshold: 0.3
+    # Force exact cluster count by setting num_clusters > 0; otherwise the
+    # threshold path is used. If you know how many speakers the meeting
+    # has, this is the most reliable knob.
+    num_clusters: -1
+    min_duration_on: 0.3
+    min_duration_off: 0.5
   transcribe:
     backend: sense_voice
     chunk_max_sec: 30
+    # Skip diarized chunks shorter than this (filler / sliver artifacts).
+    min_segment_sec: 0.2
   review:
     model: gemma-4-26b-a4b-it-4bit
     context_window_segments: 4
-    max_segments_per_call: 12
+    # Smaller batches recover faster from a single bad gemma-4 response
+    # and reduce per-call latency variance. Empirically 8 is a good balance
+    # between throughput (fewer calls) and resilience (smaller blast radius).
+    max_segments_per_call: 8
+    # Per-call HTTP timeout in seconds. gemma-4-26b on this hardware needs
+    # ~30-90s per batch; 180s gives generous headroom without hanging
+    # forever on a single stuck call.
+    timeout_sec: 180
   summary:
     model: gemma-4-26b-a4b-it-4bit
+    timeout_sec: 120

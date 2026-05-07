@@ -36,7 +36,14 @@ def run_job(
 
         # Pass 1: VAD + diarize
         store.update(job.id, status=JobStatus.VAD_DIARIZE)
-        diarized = vad_diarize(audio, max_speakers=cfg["diarize"]["max_speakers"])
+        diar_cfg = cfg["diarize"]
+        diarized = vad_diarize(
+            audio,
+            num_clusters=int(diar_cfg.get("num_clusters", -1)),
+            cluster_threshold=float(diar_cfg.get("cluster_threshold", 0.5)),
+            min_duration_on=float(diar_cfg.get("min_duration_on", 0.3)),
+            min_duration_off=float(diar_cfg.get("min_duration_off", 0.5)),
+        )
 
         # Pass 2: Transcribe per segment
         store.update(job.id, status=JobStatus.TRANSCRIBING)
@@ -60,6 +67,7 @@ def run_job(
             model=cfg["review"]["model"],
             window=cfg["review"]["context_window_segments"],
             batch=cfg["review"]["max_segments_per_call"],
+            timeout_sec=float(cfg["review"].get("timeout_sec", 300)),
         )
 
         # Pass 4: Render
@@ -72,6 +80,7 @@ def run_job(
             role_map=role_map,
             omlx=omlx,
             summary_model=cfg["summary"]["model"],
+            summary_timeout_sec=float(cfg["summary"].get("timeout_sec", 180)),
         )
 
         store.update(job.id, status=JobStatus.DONE)
