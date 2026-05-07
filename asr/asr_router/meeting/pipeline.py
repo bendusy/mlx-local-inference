@@ -10,7 +10,7 @@ from asr_router.config import Settings
 from asr_router.glossary import Glossary
 from asr_router.jobs import Job, JobStatus, JobStore
 from asr_router.meeting.vad_diarize import vad_diarize
-from asr_router.meeting.transcribe import transcribe_segments
+from asr_router.meeting.transcribe import transcribe_segments, merge_consecutive_same_speaker
 from asr_router.meeting.review import review_segments
 from asr_router.meeting.render import render_artifacts
 from asr_router.models.omlx_client import OMLXClient
@@ -50,6 +50,19 @@ def run_job(
         raw = transcribe_segments(
             audio, diarized, chunk_max_sec=cfg["transcribe"]["chunk_max_sec"]
         )
+        # Optional same-speaker merge to reduce reviewer batch count
+        merge_cfg = cfg["transcribe"].get("merge", {})
+        if merge_cfg.get("enabled", True):
+            before = len(raw)
+            raw = merge_consecutive_same_speaker(
+                raw,
+                max_gap_sec=float(merge_cfg.get("max_gap_sec", 2.0)),
+                max_merged_sec=float(merge_cfg.get("max_merged_sec", 60.0)),
+            )
+            print(
+                f"[pipeline] same-speaker merge: {before} → {len(raw)} segments",
+                flush=True,
+            )
 
         # Pass 3: gemma-4 review
         store.update(job.id, status=JobStatus.REVIEWING)

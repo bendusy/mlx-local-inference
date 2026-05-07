@@ -16,8 +16,22 @@ meeting:
     chunk_max_sec: 30
     # Skip diarized chunks shorter than this (filler / sliver artifacts).
     min_segment_sec: 0.2
+    # Post-transcribe merge of adjacent same-speaker chunks. Cuts the
+    # number of items the LLM reviewer has to process. Big lever — on
+    # the 36-min test we observed 362 segments for 10 real speakers,
+    # most of which were sub-second slivers from over-segmentation.
+    # Merging them by speaker continuity reduces review batches roughly
+    # 2-3× without losing any text.
+    merge:
+      enabled: true
+      max_gap_sec: 2.0
+      max_merged_sec: 60.0
   review:
-    model: gemma-4-26b-a4b-it-4bit
+    # Qwen3.5-9B is 3-4× faster per gemma-4-26b call on this hardware
+    # and is sufficient for structured JSON correction tasks. Switch to
+    # gemma-4-26b-a4b-it-4bit if the 9B is making consistent quality
+    # mistakes on a specific corpus.
+    model: Qwen3.5-9B-MLX-4bit
     context_window_segments: 4
     # Smaller batches recover faster from a single bad gemma-4 response
     # and reduce per-call latency variance. Empirically 8 is a good balance
@@ -36,5 +50,7 @@ meeting:
     # (the dominant cost in the meeting pipeline).
     parallel_batches: 4
   summary:
+    # Summary is a one-shot call where the prompt is the full transcript;
+    # 26b is worth the extra cost for higher-quality structured output.
     model: gemma-4-26b-a4b-it-4bit
     timeout_sec: 120
